@@ -1,0 +1,16 @@
+{
+  "name": "ff6-in-elm",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "elm-live src/Main.elm --start-page=src/index.html -- --output=elm.js --debug"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "elm": "^0.19.1-5",
+    "elm-live": "^4.0.2"
+  }
+}
