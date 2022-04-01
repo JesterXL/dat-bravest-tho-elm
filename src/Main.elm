@@ -3,29 +3,28 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
-import Battle exposing (getRandomNumberFromRange, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+import Battle exposing (getRandomNumberFromRange, terra, playableTerra, locke, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
-
+import Task
 
 type alias Model =
     { count : Int
-    , randomNumber : Int
-    , damage : Int }
+    , damage : Int 
+    , initialSeed : Random.Seed }
 
 
-initialModel : Model
-initialModel =
+initialModel : Random.Seed -> Model
+initialModel seed =
     { count = 0
-    , randomNumber = 0
-    , damage = 0 }
+    , damage = 0
+    , initialSeed = seed }
 
 
 type Msg
     = Increment
     | Decrement
-    | GetRandomNumber
-    | GotRandomNumber Int
-    | GetDamage
+    | FireSpellAgainstSingleTarget
+    | FireSpellAgainstMultipleTargets
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -37,19 +36,21 @@ update msg model =
         Decrement ->
             ({ model | count = model.count - 1 }, Cmd.none)
 
-        GetRandomNumber ->
-            (model, Random.generate GotRandomNumber (getRandomNumberFromRange 1 4) )
-        GotRandomNumber randomInt ->
-            ( { model | randomNumber = randomInt }, Cmd.none )
-        GetDamage ->
+        FireSpellAgainstSingleTarget ->
+            let
+                { power } = fireSpell
+                
+                damage = getDamage model.initialSeed PlayerMagicalAttack power (MagicPower 1) (Level 1) playableTerra playableLocke
+            in
+            ( { model | damage = damage }, Cmd.none )
+        FireSpellAgainstMultipleTargets ->
             let
                 { power } = fireSpell
                 equippedRelics = { leftHand = Earring, rightHand = Earring }
                 
-                damage = getDamage PlayerMagicalAttack power (MagicPower 1) (Level 1) equippedRelics
+                damage = getDamage model.initialSeed PlayerMagicalMultipleAttack power (MagicPower 1) (Level 1) playableTerra playableLocke
             in
             ( { model | damage = damage }, Cmd.none )
-
 
 
 view : Model -> Html Msg
@@ -59,16 +60,16 @@ view model =
         , div [] [ text <| String.fromInt model.count ]
         , button [ onClick Decrement ] [ text "-1" ]
         , div [][]
-        , button [onClick GetRandomNumber ][text "Get Random Number"]
-        , div [][text ("Random Number: " ++ (String.fromInt model.randomNumber))]
-        , button [onClick GetDamage ][text "Get Magic Damage"]
+        , button [onClick FireSpellAgainstSingleTarget ][text "Fire Spell Single Target"]
+        , div [][text ("Magic Damage: " ++ (String.fromInt model.damage))]
+        , button [onClick FireSpellAgainstMultipleTargets ][text "Fire Spell Multiple Targets"]
         , div [][text ("Magic Damage: " ++ (String.fromInt model.damage))]
         ]
 
 
 init : () -> (Model, Cmd Msg)
 init _ =
-    ( initialModel , Cmd.none )
+    ( initialModel (Random.initialSeed 42) , Cmd.none )
 
 subscriptions _ =
     Sub.none

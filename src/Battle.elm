@@ -1,27 +1,30 @@
-module Battle exposing (getRandomNumberFromRange, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+module Battle exposing (getRandomNumberFromRange, getDamage, terra, playableTerra, locke, playableLocke, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
+import Task
 
 perfectHitRate : Int
 perfectHitRate =
     255
 
-getRandomNumberFromRange : Int -> Int -> Random.Generator Int
-getRandomNumberFromRange start end =
-    Random.int start end
+getRandomNumberFromRange : Random.Seed -> Int -> Int -> (Int, Random.Seed)
+getRandomNumberFromRange seed start end =
+    Random.step (Random.int start end) seed
 
 
 -- Step 1
 
-getDamage : Attack -> SpellPower -> MagicPower -> Level -> EquippedRelics -> Int
-getDamage attack spellPower magicPower level equippedRelics =
+getDamage : Random.Seed -> Attack -> SpellPower -> MagicPower -> Level -> PlayableCharacter -> PlayableCharacter -> Int
+getDamage seed attack spellPower magicPower level attacker target =
     getDamageStep1A attack spellPower magicPower level (Damage 0)
-    |> getStep2MagicalAttackRelicBonus attack (EquippedWithOneEarring (getEquippedWithOneEarring equippedRelics)) (EquippedWithOneHeroRing (getEquippedWithOneHeroRing equippedRelics))
-    |> getStep2MagicalAttackRelicsBonus attack (EquippedWithTwoEarrings (getEquippedWithTwoEarrings equippedRelics)) (EquippedWithTwoHeroRings (getEquippedWithTwoHeroRings equippedRelics))
+    |> getStep2MagicalAttackRelicBonus attack (EquippedWithOneEarring (getEquippedWithOneEarring attacker.equippedRelics)) (EquippedWithOneHeroRing (getEquippedWithOneHeroRing attacker.equippedRelics))
+    |> getStep2MagicalAttackRelicsBonus attack (EquippedWithTwoEarrings (getEquippedWithTwoEarrings attacker.equippedRelics)) (EquippedWithTwoHeroRings (getEquippedWithTwoHeroRings attacker.equippedRelics))
+    |> getDamageStep3 attack
+    |> getStep6aDamageModificationsVariance seed
+    |> (\(damage, newSeed) -> getStep6bDefenseDamageModification attack damage target.character.defense target.character.magicalDefense)
     |> (\damage -> case damage of
         Damage dam ->
             dam)
-
 
 type Attack
     = PlayerPhysicalAttack
@@ -90,15 +93,71 @@ fireSpell =
     , unblockable = Unblockable False
     , hitRate = HitRate 150 }
 
--- -- magical attacks made by characters
+type BattlePower = BattlePower Int
+type Evade = Evade Int
+type MBlock = MBlock Int
+type Speed = Speed Int
+type Stamina = Stamina Int
+type Vigor = Vigor Int
+type MagicDefense = MagicDefense Int
+
+type alias Character =
+    { vigor : Vigor
+    , speed : Speed 
+    , stamina : Stamina 
+    , magicPower : MagicPower 
+    , battlePower : BattlePower 
+    , defense : Defense 
+    , magicalDefense : MagicalDefense
+    , mblock : MBlock 
+    , evade : Evade }
+
+type alias PlayableCharacter =
+    { character : Character
+    , equippedRelics : EquippedRelics }
+
+terra : Character
+terra =
+    { vigor = Vigor 31
+    , speed = Speed 33
+    , stamina = Stamina 28
+    , magicPower = MagicPower 39
+    , battlePower = BattlePower 12
+    , defense = Defense 42
+    , magicalDefense = MagicalDefense 33
+    , mblock = MBlock 7
+    , evade = Evade 5 }
+
+playableTerra : PlayableCharacter 
+playableTerra =
+    { character = terra
+    , equippedRelics = { leftHand = Earring, rightHand = Earring } }
+
+locke : Character
+locke =
+    { vigor = Vigor 37
+    , speed = Speed 40
+    , stamina = Stamina 31
+    , magicPower = MagicPower 28
+    , battlePower = BattlePower 14
+    , defense = Defense 46
+    , magicalDefense = MagicalDefense 23
+    , mblock = MBlock 2
+    , evade = Evade 15 }
+
+playableLocke : PlayableCharacter
+playableLocke =
+    { character = locke
+    , equippedRelics = { leftHand = HeroRing, rightHand = SneakRing }}
+
+-- 2.1 - Step 1 magical attacks made by characters
+
 getDamageStep1A : Attack -> SpellPower -> MagicPower -> Level -> Damage -> Damage
 getDamageStep1A attack (SpellPower spellPower) (MagicPower magicPower) (Level level) (Damage damage) =
-    case attack of
-        PlayerMagicalAttack ->
-            Damage (spellPower * 4 + (level * magicPower * spellPower // 32) + damage)
-
-        _ ->
-            Damage damage
+    if isMagicalAttack attack then
+        Damage (spellPower * 4 + (level * magicPower * spellPower // 32) + damage)
+    else
+        Damage damage
 
 type Relic
     = NoRelic
@@ -346,7 +405,7 @@ equippedWithOneEarringOrHeroRing (EquippedWithOneEarring equippedWithOneEarring)
 
 getStep2MagicalAttackRelicBonus : Attack -> EquippedWithOneEarring -> EquippedWithOneHeroRing -> Damage -> Damage
 getStep2MagicalAttackRelicBonus attack equippedWithOneEarring equippedWithHeroRing (Damage damage) =
-    if attack == PlayerMagicalAttack && equippedWithOneEarringOrHeroRing equippedWithOneEarring equippedWithHeroRing == True then
+    if isMagicalAttack attack && equippedWithOneEarringOrHeroRing equippedWithOneEarring equippedWithHeroRing == True then
         damage * 5 // 4 |> Damage
     else
         Damage damage
@@ -365,11 +424,8 @@ equippedWithTwoEaringsOrTwoHeroRings (EquippedWithTwoEarrings twoEarrings) (Equi
 -- 2.1 Step 2c
 getStep2MagicalAttackRelicsBonus : Attack -> EquippedWithTwoEarrings -> EquippedWithTwoHeroRings -> Damage -> Damage
 getStep2MagicalAttackRelicsBonus attack twoEarrings twoHeroRings (Damage damage) =
-    if attack == PlayerMagicalAttack && equippedWithTwoEaringsOrTwoHeroRings twoEarrings twoHeroRings == True then
-        let
-            damageFloat = toFloat damage
-        in
-        damageFloat + (damageFloat / 4) + (damageFloat / 4) |> floor |> Damage
+    if isMagicalAttack attack && equippedWithTwoEaringsOrTwoHeroRings twoEarrings twoHeroRings == True then
+        damage + (damage // 4) + (damage // 4) |> Damage
     else
         Damage damage
 
@@ -395,19 +451,19 @@ getStep2MagicalAttackRelicsBonus attack twoEarrings twoHeroRings (Damage damage)
 -- --                 damage
 
 -- --         _ ->
--- --             damage
+-- --             damagetw
 
 
 
--- -- Step 3
 
+-- Step 3
 
--- getDamageStep3 : Attack -> Damage -> Damage
--- getDamageStep3 attack (Damage damage) =
---     if attack == PlayerMagicalMultipleAttack then
---         toFloat damage / 2 |> floor |> Damage
---     else
---         Damage damage
+getDamageStep3 : Attack -> Damage -> Damage
+getDamageStep3 attack (Damage damage) =
+    if attack == PlayerMagicalMultipleAttack then
+        damage // 2 |> Damage
+    else
+        Damage damage
 
 
 
@@ -492,28 +548,45 @@ getStep2MagicalAttackRelicsBonus attack twoEarrings twoHeroRings (Damage damage)
 
 
 
--- -- Step 6
--- -- 224 was what I had defaulted to
+-- Step 6
+-- 224 was what I had defaulted to
+
+-- Step 6a - random variance
 
 
--- -- getDamageModificationsVariance : Seed -> Int
--- -- getDamageModificationsVariance seed =
--- --     Tuple.first (getRandomNumberFromRange 224 255 seed)
+
+getStep6aDamageModificationsVariance : Random.Seed -> Damage -> (Damage, Random.Seed)
+getStep6aDamageModificationsVariance seed (Damage damage) =
+    getRandomNumberFromRange seed 224 255
+    |> (\(int, newSeed) -> ((damage * int // 256) + 1, newSeed) )
+    |> (\ (newDamage, newSeed ) -> (Damage newDamage, newSeed))
 
 
--- -- Step 6b
 
--- type Defense = Defense Int
+-- 2.1 - Step 6b
+-- TODO: figure out a way to use the bug by default, but turn it off
+-- if the player wants to
 
--- getDefenseModification : Damage -> Defense -> Damage
--- getDefenseModification (Damage damage) (Defense defense) =
---     ((toFloat damage) * (256 - (toFloat defense)) / 256) + 1 |> floor |> Damage
+type Defense = Defense Int
 
--- type MagicalDefense = MagicalDefense Int
+getPhysicalDefenseModification : Damage -> Defense -> Damage
+getPhysicalDefenseModification (Damage damage) (Defense defense) =
+    (damage * (256 - defense) // 256) + 1 |> Damage
 
--- getMagicalDefenseModification : Damage -> MagicalDefense -> Damage 
--- getMagicalDefenseModification (Damage damage) (MagicalDefense defense) =
---     ((toFloat damage) * (256 - (toFloat defense)) / 256) + 1 |> floor |> Damage
+type MagicalDefense = MagicalDefense Int
+
+getMagicalDefenseModification : Damage -> MagicalDefense -> Damage 
+getMagicalDefenseModification (Damage damage) (MagicalDefense defense) =
+    (damage * (256 - defense) // 256) + 1 |> Damage
+
+getStep6bDefenseDamageModification : Attack -> Damage -> Defense -> MagicalDefense -> Damage
+getStep6bDefenseDamageModification attack damage def mblock =
+    if isPhysicalAttack attack then
+        getPhysicalDefenseModification damage def
+    else if isMagicalAttack attack then
+        getMagicalDefenseModification damage mblock
+    else
+        damage 
 
 
 -- type HasSafeStatus = HasSafeStatus Bool
@@ -722,42 +795,42 @@ getStep2MagicalAttackRelicsBonus attack twoEarrings twoHeroRings (Damage damage)
 --     | Unknown
 
 
--- isPhysicalAttack : Attack -> Bool
--- isPhysicalAttack attack =
---     case attack of
---         PlayerPhysicalAttack ->
---             True
+isPhysicalAttack : Attack -> Bool
+isPhysicalAttack attack =
+    case attack of
+        PlayerPhysicalAttack ->
+            True
 
---         PlayerPhysicalMultipleAttack ->
---             True
+        PlayerPhysicalMultipleAttack ->
+            True
 
---         MonsterPhysicalAttack ->
---             True
+        MonsterPhysicalAttack ->
+            True
 
---         MonsterPhysicalMultipleAttack ->
---             True
+        MonsterPhysicalMultipleAttack ->
+            True
 
---         _ ->
---             False
+        _ ->
+            False
 
 
--- isMagicalAttack : Attack -> Bool
--- isMagicalAttack attack =
---     case attack of
---         MonsterMagicalAttack ->
---             True
+isMagicalAttack : Attack -> Bool
+isMagicalAttack attack =
+    case attack of
+        MonsterMagicalAttack ->
+            True
 
---         MonsterMagicalMultipleAttack ->
---             True
+        MonsterMagicalMultipleAttack ->
+            True
 
---         PlayerMagicalAttack ->
---             True
+        PlayerMagicalAttack ->
+            True
 
---         PlayerMagicalMultipleAttack ->
---             True
+        PlayerMagicalMultipleAttack ->
+            True
 
---         _ ->
---             False
+        _ ->
+            False
 
 
 -- isSpecialAttack : Attack -> Bool
