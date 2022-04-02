@@ -3,7 +3,7 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
-import Battle exposing (getRandomNumberFromRange, terraStats, playableTerra, dirk, lockeStats, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+import Battle exposing (getRandomNumberFromRange, terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
 import Task
 
@@ -42,7 +42,7 @@ update msg model =
                 { power } = fireSpell
                 
                 damage = 
-                    getDamage model.initialSeed PlayerMagicalAttack power (MagicPower 1) dirk (Level 1) playableTerra playableLocke
+                    getDamage model.initialSeed PlayerMagicalAttack power (MagicPower 1) dirk (Level 1) terraAttacker lockeTarget
             in
             ( { model | damage = damage }, Cmd.none )
         FireSpellAgainstMultipleTargets ->
@@ -50,13 +50,13 @@ update msg model =
                 { power } = fireSpell
                 
                 damage = 
-                    getDamage model.initialSeed PlayerMagicalMultipleAttack power (MagicPower 1) dirk (Level 1) playableTerra playableLocke
+                    getDamage model.initialSeed PlayerMagicalMultipleAttack power (MagicPower 1) dirk (Level 1) terraAttacker lockeTarget
             in
             ( { model | damage = damage }, Cmd.none )
         SwordPhysicalAttackSingleTarget ->
             let
                 damage = 
-                    getDamage model.initialSeed PlayerPhysicalAttack (SpellPower 0) (MagicPower 0) dirk (Level 1) playableTerra playableLocke
+                    getDamage model.initialSeed PlayerPhysicalAttack (SpellPower 0) (MagicPower 0) dirk (Level 1) terraAttacker lockeTarget
             in
             
             ( { model | damage = damage }, Cmd.none )

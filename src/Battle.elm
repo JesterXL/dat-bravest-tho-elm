@@ -1,4 +1,4 @@
-module Battle exposing (getRandomNumberFromRange, getDamage, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+module Battle exposing (getRandomNumberFromRange, getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
 import Task
@@ -11,17 +11,32 @@ getRandomNumberFromRange : Random.Seed -> Int -> Int -> (Int, Random.Seed)
 getRandomNumberFromRange seed start end =
     Random.step (Random.int start end) seed
 
+type Attacker
+    = CharacterAttacker PlayableCharacter
+    | MonsterAttacker PlayingMonster
+
+type Target
+    = CharacterTarget PlayableCharacter
+    | MonsterTarget PlayingMonster
 
 -- Step 1
 
-getDamage : Random.Seed -> Attack -> SpellPower -> MagicPower -> Weapon -> Level -> PlayableCharacter -> PlayableCharacter -> Int
-getDamage seed attack spellPower magicPower weapon level attacker target =
+getDamage : Random.Seed -> Attack -> SpellPower -> MagicPower -> WeaponStats -> Level -> Attacker -> Target -> Int
+getDamage seed attack spellPower magicPower weaponStats level attacker target =
     getDamageStep1A attack spellPower magicPower level (Damage 0)
-    |> getStep2MagicalAttackRelicBonus attack (EquippedWithOneEarring (getEquippedWithOneEarring attacker.equippedRelics)) (EquippedWithOneHeroRing (getEquippedWithOneHeroRing attacker.equippedRelics))
-    |> getStep2MagicalAttackRelicsBonus attack (EquippedWithTwoEarrings (getEquippedWithTwoEarrings attacker.equippedRelics)) (EquippedWithTwoHeroRings (getEquippedWithTwoHeroRings attacker.equippedRelics))
+    -- |> getStep2MagicalAttackRelicBonus attack (EquippedWithOneEarring (getEquippedWithOneEarring attacker.equippedRelics)) (EquippedWithOneHeroRing (getEquippedWithOneHeroRing attacker.equippedRelics))
+    -- |> getStep2MagicalAttackRelicsBonus attack (EquippedWithTwoEarrings (getEquippedWithTwoEarrings attacker.equippedRelics)) (EquippedWithTwoHeroRings (getEquippedWithTwoHeroRings attacker.equippedRelics))
     |> getDamageStep3 attack
     |> getStep6aDamageModificationsVariance seed
-    |> (\(damage, newSeed) -> ( getStep6bDefenseDamageModification attack damage target.stats.defense target.stats.magicalDefense, newSeed))
+    |> (\(damage, newSeed) -> (
+        case target of
+            CharacterTarget playingCharacter ->
+                (getStep6bDefenseDamageModification attack damage playingCharacter.stats.defense playingCharacter.stats.magicDefense, newSeed)
+            MonsterTarget playingMonster ->
+                (getStep6bDefenseDamageModification attack damage playingMonster.stats.defense playingMonster.stats.magicDefense, newSeed)
+            
+        )
+    )
     |> (\(damage, newSeed) -> getStep6cSafeShellDamage attack target damage )
     |> (\damage -> case damage of
         Damage dam ->
@@ -126,13 +141,70 @@ type alias CharacterStats =
     , magicPower : MagicPower 
     , battlePower : BattlePower 
     , defense : Defense 
-    , magicalDefense : MagicalDefense
+    , magicDefense : MagicDefense
     , mblock : MBlock 
     , evade : Evade }
+
+type Item
+    = Antidote
+    | BoldEdge
+    | DriedMeat
+
+type alias ItemStats =
+    { name : String
+    , type_ : Item
+    , price : Price 
+    , description : String }
+
+type Element
+    = Water
+    | Fire
+    | Lightning
+    | Poison
+    | Ice
+    | Pearl
+    | Wind
+    | Earth
+
+type Monster
+    = Abolisher
+    | Actaneon
+    | Adamanchyt
+
+type alias MonsterStats =
+    { type_ : Monster
+    , hitPoints : HitPoints
+    , magicPoints : MagicPoints
+    , xp : XP
+    , gold : Gold
+    , battlePower : BattlePower
+    , hitRate : HitRate
+    , defense : Defense
+    , evade : Evade
+    , magicPower : MagicPower
+    , speed : Speed 
+    , magicDefense : MagicDefense
+    , mblock : MBlock
+    , stolenItems : List Item
+    , droppedItems : List Item
+    , absorbs : List Element
+    , noEffect : List Element
+    , weak : List Element }
+
+type alias PlayingMonster =
+    { stats : MonsterStats
+    , hasSafeStatus : HasSafeStatus
+    , hasShellStatus : HasShellStatus }
+
+type Gold = Gold Int
+type HitPoints = HitPoints Int
+type MagicPoints = MagicPoints Int
+type XP = XP Int
 
 type alias PlayableCharacter =
     { stats : CharacterStats
     , equippedRelics : EquippedRelics
+    , equippedWeapons : EquippedWeapons
     , hasSafeStatus : HasSafeStatus
     , hasShellStatus : HasShellStatus }
 
@@ -145,16 +217,21 @@ terraStats =
     , magicPower = MagicPower 39
     , battlePower = BattlePower 12
     , defense = Defense 42
-    , magicalDefense = MagicalDefense 33
+    , magicDefense = MagicDefense 33
     , mblock = MBlock 7
     , evade = Evade 5 }
 
 playableTerra : PlayableCharacter 
 playableTerra =
     { stats = terraStats
-    , equippedRelics = { leftHand = Earring, rightHand = Earring }
+    , equippedRelics = { leftHand = Just Earring, rightHand = Just Earring }
+    , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon mithrilKnife) }
     , hasSafeStatus = HasSafeStatus False 
     , hasShellStatus = HasShellStatus False }
+
+terraAttacker : Attacker
+terraAttacker =
+    CharacterAttacker playableTerra
 
 lockeStats : CharacterStats
 lockeStats =
@@ -165,16 +242,22 @@ lockeStats =
     , magicPower = MagicPower 28
     , battlePower = BattlePower 14
     , defense = Defense 46
-    , magicalDefense = MagicalDefense 23
+    , magicDefense = MagicDefense 23
     , mblock = MBlock 2
     , evade = Evade 15 }
 
 playableLocke : PlayableCharacter
 playableLocke =
     { stats = lockeStats
-    , equippedRelics = { leftHand = HeroRing, rightHand = SneakRing }
+    , equippedRelics = { leftHand = Just HeroRing, rightHand = Just SneakRing }
+    , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon dirk) }
     , hasSafeStatus = HasSafeStatus False 
     , hasShellStatus = HasShellStatus False }
+
+lockeTarget : Target
+lockeTarget =
+    CharacterTarget playableLocke
+
 
 -- 2.1 - Step 1 magical attacks made by characters
 
@@ -186,8 +269,7 @@ getDamageStep1A attack (SpellPower spellPower) (MagicPower magicPower) (Level le
         Damage damage
 
 type Relic
-    = NoRelic
-    | AtlasArmlet
+    = AtlasArmlet
     | BlackBelt
     | CharmBangle
     | CursedRing
@@ -207,42 +289,273 @@ type Relic
     | TrueKnight
 
 type alias EquippedRelics =
-    { leftHand : Relic
-    , rightHand : Relic }
+    { leftHand : Maybe Relic
+    , rightHand : Maybe Relic }
 
-type alias Weapon =
-    { name : String 
+type Weapon
+    = AirLancet
+    | Assassin
+    | Dirk
+    | Graedus
+    | Guardian
+    | ManEater
+    | MithrilKnife
+    | SwordBreaker
+    | ThiefKnife
+    | ValiantKnife
+    | AtmaWeapon
+    | Blizzard
+    | BreakBlade
+    | Crystal
+    | Drainer
+    | Enhancer
+    | Epee
+    | Excalibur
+    | Falchion
+    | FlameSabre
+    | Illumina
+    | MithrilBlade
+    | OgreNix
+    | Ragnarok
+    | RegalCutlass
+    | RuneEdge
+    | Scimitar
+    | SoulSabre
+    | ThunderBlade
+    | AuraLance
+    | GoldLance
+    | ImpHalberd
+    | MithrilPike
+    | Partisan
+    | PearlLance
+    | StoutSpear
+    | Trident
+    | Blossom
+    | Hardened
+    | Imperial
+    | Kodachi
+    | Striker
+    | Stunner
+    | Ashura
+    | Aura
+    | Forged
+    | Kotetsu
+    | Murasame
+    | SkyRender
+    | Strato
+    | Tempest
+    | FireRod
+    | GravityRod
+    | HealRod
+    | IceRod
+    | MagusRod
+    | MithrilRod
+    | PearlRod
+    | PoisonRod
+    | Punisher
+    | ThunderRod
+    | ChocoboBrsh
+    | DaVinciBrsh
+    | MagicalBrsh
+    | RainbowBrsh
+    | NinjaStar
+    | Shuriken
+    | TackStar
+    | BoneClub
+    | Boomerang
+    | Flail
+    | FullMoon
+    | HawkEye
+    | MorningStar
+    | RisingSun
+    | Sniper
+    | WingEdge
+    | Cards
+    | Darts
+    | Dice
+    | DoomDarts
+    | FixedDice
+    | Trump
+    | DragonClaw
+    | FireKnuckle
+    | Kaiser
+    | MetalKnuckle
+    | MithrilClaw
+    | PoisonClaw
+    | TigerFangs
+
+type alias WeaponStats =
+    { weapon : Weapon
     , power : BattlePower
     , hitRate : HitRate 
     , price : Price 
     , equippableCharacters : List Character }
 
-dirk : Weapon
+dirk : WeaponStats
 dirk =
-    { name = "Dirk"
+    { weapon = Dirk
     , power = BattlePower 26
     , hitRate = HitRate 180
     , price = Price 150 
-    , equippableCharacters = [ Terra, Locke, Shadow, Edgar, Celes, Strago, Relm, Setzer, Mog, Gogo]}
+    , equippableCharacters = [ Terra, Locke, Shadow, Edgar, Celes, Strago, Relm, Setzer, Mog, Gogo ]}
+
+mithrilKnife : WeaponStats
+mithrilKnife =
+    { weapon = MithrilKnife
+    , power = BattlePower 30
+    , hitRate = HitRate 180
+    , price = Price 300
+    , equippableCharacters = [ Terra, Locke, Shadow, Edgar, Celes, Strago, Relm, Setzer, Mog, Gogo ] }
+
+type Armor
+    = AegisShld
+    | Buckler
+    | CrystalShld
+    | CursedShld
+    | DiamondShld
+    | FlameShld
+    | ForceShld
+    | GenjiShld
+    | GoldShld
+    | HeavyShld
+    | IceShld
+    | MithrilShld
+    | PaladinShld
+    | ThunderShld
+    | TortoiseShld
+    | Bandana
+    | BardsHat
+    | Beret
+    | CatHood
+    | Circlet
+    | Coronet
+    | CrystalHelm
+    | DarkHood
+    | DiamondHelm
+    | GenjiHelmet
+    | GoldHelmet
+    | GreenBeret
+    | HairBand
+    | HeadBand
+    | IronHelmet
+    | LeatherHat
+    | MagusHat
+    | MithrilHelm
+    | MysteryVeil
+    | OathVeil
+    | PlumedHat
+    | RedCap
+    | RegalCrown
+    | Thornlet
+    | Tiara
+    | TigerMask
+    | Titanium
+    | BehemothSuit
+    | ChocoboSuit
+    | CottonRobe
+    | CrystalMail
+    | CzarinaGown
+    | DarkGear
+    | DiamondVest
+    | DiamondArmor
+    | ForceArmor
+    | GaiaGear
+    | GenjiArmor
+    | GoldArmor
+    | ImpsArmor
+    | IronArmor
+    | KungFuSuit
+    | LeatherArmor
+    | LightRobe
+    | Minerva
+    | MirageVest
+    | MithrilMail
+    | MithrilVest
+    | MoogleSuit
+    | NinjaGear
+    | NutkinSuit
+    | PowerSash
+    | RedJacket
+    | SilkRobe
+    | SnowMuffler
+    | TabbySuit
+    | TaoRobe
+    | WhiteDress
+
+type WearableArmorType
+    = Shield
+    | Helmet
+    | BodyArmor
+
+type alias ArmorStats =
+    { armor : Armor
+    , type_ : WearableArmorType
+    , defense : Defense 
+    , magicDefense : MagicDefense
+    , price : Price
+    , equippableCharacters : List Character }
+
+type alias ShieldStats =
+    { armor : Armor
+    , type_ : WearableArmorType
+    , defense : Defense 
+    , magicDefense : MagicDefense
+    , price : Price
+    , equippableCharacters : List Character }
+
+buckler : ShieldStats
+buckler =
+    { armor = Buckler
+    , type_ = Shield
+    , defense = Defense 16
+    , magicDefense = MagicDefense 10
+    , price = Price 200
+    , equippableCharacters = [Terra, Locke, Cyan, Shadow, Edgar, Sabin, Celes, Strago, Relm, Setzer, Mog, Gau, Gogo] }
+
+leatherHat : ArmorStats
+leatherHat =
+    { armor = LeatherHat
+    , type_ = Helmet 
+    , defense = Defense 11
+    , magicDefense = MagicDefense 7
+    , price = Price 50 
+    , equippableCharacters = [Terra, Locke, Cyan, Shadow, Edgar, Sabin, Celes, Strago, Relm, Setzer, Mog, Gau, Gogo]}
+
+leatherArmor : ArmorStats
+leatherArmor =
+    { armor = LeatherArmor
+    , type_ = BodyArmor
+    , defense = Defense 28
+    , magicDefense = MagicDefense 19
+    , price = Price 150
+    , equippableCharacters = [Terra, Locke, Cyan, Shadow, Edgar, Celes, Strago, Relm, Setzer, Mog, Gau, Gogo]}
 
 type Price = Price Int
+
+
+type Equippable
+    = EquippedWeapon WeaponStats
+    | EquippedShield ShieldStats
+
+type alias EquippedWeapons =
+    { leftHand : Maybe Equippable, rightHand: Maybe Equippable }
 
 
 -- 2.1 Step 2b
 getEquippedWithOneEarring : EquippedRelics -> Bool
 getEquippedWithOneEarring { leftHand, rightHand } =
-    if leftHand == Earring && rightHand /= Earring then
+    if leftHand == Just Earring && rightHand /= Just Earring then
         True
-    else if rightHand == Earring && leftHand /= Earring then
+    else if rightHand == Just Earring && leftHand /= Just Earring then
         True
     else
         False
 
 getEquippedWithOneHeroRing : EquippedRelics -> Bool
 getEquippedWithOneHeroRing { leftHand, rightHand } =
-    if leftHand == HeroRing && rightHand /= HeroRing then
+    if leftHand == Just HeroRing && rightHand /= Just HeroRing then
         True
-    else if rightHand == HeroRing && leftHand /= HeroRing then
+    else if rightHand == Just HeroRing && leftHand /= Just HeroRing then
         True
     else
         False
@@ -250,14 +563,14 @@ getEquippedWithOneHeroRing { leftHand, rightHand } =
 -- 2.1 Step 2c
 getEquippedWithTwoEarrings : EquippedRelics -> Bool
 getEquippedWithTwoEarrings { leftHand, rightHand } =
-    if leftHand == Earring && rightHand == Earring then
+    if leftHand == Just Earring && rightHand == Just Earring then
         True
     else
         False
 
 getEquippedWithTwoHeroRings : EquippedRelics -> Bool
 getEquippedWithTwoHeroRings { leftHand, rightHand } =
-    if leftHand == HeroRing && rightHand == HeroRing then
+    if leftHand == Just HeroRing && rightHand == Just HeroRing then
         True
     else
         False
@@ -274,142 +587,102 @@ getEquippedWithTwoHeroRings { leftHand, rightHand } =
 
 
 
--- -- Step 1C
+-- 2.1 - Step 1a
 
--- type Vigor = Vigor Int
+vigorDouble : Vigor -> Vigor
+vigorDouble (Vigor vigor) =
+    let
+        vigor2 = vigor * 2
+    in
+    if vigor >= 128 then
+        Vigor 255
 
--- clampVigor : Vigor -> Vigor
--- clampVigor (Vigor vigor) =
---     if vigor >= 128 then
---         Vigor 255
+    else
+        Vigor vigor2
 
---     else
---         Vigor vigor
+-- 2.1 - Step 1b
 
+type AttackPower = AttackPower Int
 
--- doubleVigor : Vigor -> Vigor
--- doubleVigor (Vigor vigor) =
---     (vigor * 2) |> Vigor |> clampVigor
+getStep1bAttackPower : Vigor -> BattlePower -> AttackPower 
+getStep1bAttackPower (Vigor vigor) (BattlePower power) =
+    AttackPower (power + vigor)
 
+-- 2.1 - Step 1c
 
--- vigorToInt : Vigor -> Int
--- vigorToInt (Vigor vigor) =
---     vigor
+gauntletIncreasedAttack : AttackPower -> BattlePower -> EquippedRelics -> AttackPower
+gauntletIncreasedAttack (AttackPower attackPower) (BattlePower battlePower) equippedRelics =
+    if equippedRelics.leftHand == Just Gauntlet || equippedRelics.rightHand == Just Gauntlet then
+        attackPower + battlePower * 3 // 4 |> AttackPower
+    else
+        AttackPower attackPower
 
--- type AttackPower = AttackPower Int
--- type BattlePower = BattlePower Int
+-- 2.1 - Step 1d
 
--- getAttackPower : BattlePower -> Vigor -> AttackPower
--- getAttackPower (BattlePower battlePower) vigor =
---     battlePower + (doubleVigor vigor |> vigorToInt)
---     |> AttackPower
+getDamageStep1dBasicDamage : BattlePower -> Level -> AttackPower -> Damage
+getDamageStep1dBasicDamage (BattlePower battlePower) (Level level) (AttackPower attackPower) =
+    battlePower + ((level * level * attackPower) // 256) * 3 // 2 |> Damage
 
+-- 2.1 - Step 1e
 
--- gauntletIncreasedAttack : AttackPower -> BattlePower -> EquippedWithGauntlet -> AttackPower
--- gauntletIncreasedAttack (AttackPower attackPower) (BattlePower battlePower) (EquippedWithGauntlet equippedWithGauntlet) =
---     if equippedWithGauntlet == True then
---         battlePower * 3 // 4 + attackPower |> AttackPower
+getStep1eOfferingDecreasedDamage : EquippedRelics -> Damage -> Damage
+getStep1eOfferingDecreasedDamage equippedRelics (Damage damage) =
+    if equippedRelics.leftHand == Just Offering || equippedRelics.rightHand == Just Offering then
+        damage // 2 |> Damage
+    else
+        Damage damage
 
---     else
---         AttackPower attackPower
+-- 2.1 - Step 1f
 
--- type EquippedWithGauntlet = EquippedWithGauntlet Bool
+equippedWithGenjiGlove : EquippedRelics -> Bool
+equippedWithGenjiGlove equippedRelics =
+    if equippedRelics.leftHand == Just GenjiGlove || equippedRelics.rightHand == Just GenjiGlove then
+        True
+    else
+        False
 
--- getAttackPowerFromEquipment : BattlePower -> Vigor -> EquippedWithGauntlet -> AttackPower
--- getAttackPowerFromEquipment battlePower vigor equippedWithGauntlet =
---     gauntletIncreasedAttack (getAttackPower battlePower vigor) battlePower equippedWithGauntlet
+type EquippedWeaponCount
+    = ZeroWeapons
+    | OneWeapon
+    | TwoWeapons
 
+hasEquippedWeapon : Maybe Equippable -> Bool
+hasEquippedWeapon maybeEquippable =
+    case maybeEquippable of
+        Just equippable ->
+            case equippable of
+                EquippedWeapon _ ->
+                    True
+                EquippedShield _ ->
+                    False
+        Nothing ->
+            False
 
--- getDamageStep1DBasicDamage : BattlePower -> Level -> AttackPower -> Damage
--- getDamageStep1DBasicDamage (BattlePower battlePower) (Level level) (AttackPower attackPower) =
---     battlePower + ((level * level * attackPower) // 256) * 3 // 2 |> Damage
+getEquippedWeaponCount : EquippedWeapons -> EquippedWeaponCount
+getEquippedWeaponCount equippedWeapons =
+    if hasEquippedWeapon equippedWeapons.leftHand && hasEquippedWeapon equippedWeapons.rightHand then
+        TwoWeapons
+    else if hasEquippedWeapon equippedWeapons.leftHand && hasEquippedWeapon equippedWeapons.rightHand == False then
+        OneWeapon
+    else if hasEquippedWeapon equippedWeapons.leftHand == False && hasEquippedWeapon equippedWeapons.rightHand then
+        OneWeapon
+    else
+        ZeroWeapons 
 
--- type EquippedWithOffering = EquippedWithOffering Bool
-
--- -- Step 1e
--- getOfferingDecreasedDamage : EquippedWithOffering -> Damage -> Damage
--- getOfferingDecreasedDamage (EquippedWithOffering equippedWithOffering) (Damage damage) =
---     if equippedWithOffering == True then
---         damage // 2 |> Damage
-
---     else
---         Damage damage
-
--- type AttackType
---     = StandardFightAttack
---     | MagicAttack
-
--- type EquippedwithGenjiGlove = EquippedwithGenjiGlove Bool
-
--- type WeaponCount
---     = NoWeapon
---     | OneWeapon
---     | DualWeapons
-
--- -- Step 1f
--- getDamageFromGenjiGlove : Attack -> EquippedwithGenjiGlove -> WeaponCount -> Damage -> Damage
--- getDamageFromGenjiGlove attackType (EquippedwithGenjiGlove equippedWithGenjiGlove) weaponCount (Damage damage) =
---     if attackType == PlayerPhysicalAttack && equippedWithGenjiGlove == True && weaponCount /= DualWeapons then
---         Basics.ceiling ( (toFloat damage) * (3 // 4)) |> Damage
---     else
---         Damage damage 
-
-
--- addDamage : Int -> Int -> Int
--- addDamage a b =
---     a + b
-
-
--- -- getDamageStep1C : Int -> Int -> Int -> Bool -> Bool -> Bool -> Bool -> Int -> Int
--- -- getDamageStep1C vigor battlePower level equippedWithGauntlet equippedWithOffering equippedWithGenjiGlove oneOrZeroWeapons damage =
--- --     let
--- --         attackPower =
--- --             getAttackPowerFromEquipment battlePower vigor equippedWithGauntlet
-
--- --         getOfferingDecreasedDamageF =
--- --             getOfferingDecreasedDamage equippedWithOffering
-
--- --         getDamageFromGenjiGloveF =
--- --             getDamageFromGenjiGlove True equippedWithGenjiGlove oneOrZeroWeapons
--- --     in
--- --     getDamageStep1CBasicDamage battlePower level attackPower
--- --         |> getOfferingDecreasedDamageF
--- --         |> getDamageFromGenjiGloveF
--- --         |> addDamage damage
+getStep1fDamageFromGenjiGlove : Attack -> EquippedRelics -> EquippedWeapons -> Damage -> Damage
+getStep1fDamageFromGenjiGlove attack equippedRelics equippedWeapons (Damage damage) =
+    if isPhysicalAttack attack && equippedWithGenjiGlove equippedRelics == True && getEquippedWeaponCount equippedWeapons /= TwoWeapons then
+        Basics.ceiling ( (toFloat damage) * (3 / 4)) |> Damage
+    else
+        Damage damage 
 
 
--- getMonsterPhysicalAttackDamage : Attack -> Vigor -> BattlePower -> Level  -> Damage -> Damage
--- getMonsterPhysicalAttackDamage attack (Vigor vigor) (BattlePower battlePower) (Level level) (Damage damage) =
---     case attack of
---         MonsterPhysicalAttack ->
---             level * level * (battlePower * 4 + vigor) // 256 + damage |> Damage
-
---         _ ->
---             Damage damage
-
-
--- -- getDamageStep1 : Attack -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> Bool -> Int
--- -- getDamageStep1 attack vigor battlePower spellPower magicPower level equippedWithGauntlet equippedWithOffering equippedWithGenjiGlove oneOrZeroWeapons =
--- --     let
--- --         attackPower =
--- --             getAttackPowerFromEquipment battlePower vigor equippedWithGauntlet
-
--- --         getDamageStep1AP =
--- --             getDamageStep1A attack spellPower magicPower level 0
-
--- --         getDamageStep1BP =
--- --             getDamageStep1B attack spellPower magicPower level
-
--- --         getDamageStep1CP =
--- --             getDamageStep1C vigor battlePower level equippedWithGauntlet equippedWithOffering equippedWithGenjiGlove oneOrZeroWeapons
-
--- --         getDamageStep1DP =
--- --             getDamageStep1D attack vigor battlePower level attackPower
--- --     in
--- --     getDamageStep1AP
--- --         |> getDamageStep1BP
--- --         |> getDamageStep1CP
--- --         |> getDamageStep1DP
+getStep1aMonsterPhysicalAttackDamage : Attack -> Vigor -> BattlePower -> Level -> Damage -> Damage
+getStep1aMonsterPhysicalAttackDamage attack (Vigor vigor) (BattlePower battlePower) (Level level) (Damage damage) =
+    if isMonsterPhysicalAttack attack then
+        level * level * (battlePower * 4 + vigor) // 256 + damage |> Damage
+    else
+        Damage damage
 
 
 
@@ -419,185 +692,131 @@ getEquippedWithTwoHeroRings { leftHand, rightHand } =
 
 
 
--- -- Step 2
+-- 2.1 - Step 2a
 
--- type EquippedWithAtlasArmlet = EquippedWithAtlasArmlet Bool
-type EquippedWithOneHeroRing = EquippedWithOneHeroRing Bool 
-
--- equippedWithAtlasArmletOrHeroRing : EquippedWithAtlasArmlet -> EquippedWithHeroRing -> Bool
--- equippedWithAtlasArmletOrHeroRing (EquippedWithAtlasArmlet equippedWithAtlasArmlet) (EquippedWithHeroRing equippedWithHeroRing) =
---     if equippedWithAtlasArmlet == True || equippedWithHeroRing == True then
---         True
---     else
---         False
-
--- getStep2PhysicalAttackRelicBonus : Attack -> EquippedWithAtlasArmlet -> EquippedWithHeroRing -> Damage -> Damage
--- getStep2PhysicalAttackRelicBonus attack atlasArmlet heroRing (Damage damage) =
---     if attack == PlayerPhysicalAttack && equippedWithAtlasArmletOrHeroRing atlasArmlet heroRing then
---         toFloat damage * 5 / 4 |> floor |> Damage
---     else
---         Damage damage
-
-type EquippedWithOneEarring = EquippedWithOneEarring Bool
-
-equippedWithOneEarringOrHeroRing : EquippedWithOneEarring -> EquippedWithOneHeroRing -> Bool
-equippedWithOneEarringOrHeroRing (EquippedWithOneEarring equippedWithOneEarring) (EquippedWithOneHeroRing equippedWithOneHeroRing) =
-    if equippedWithOneEarring == True || equippedWithOneHeroRing == True then
+hasEquippedRelic : EquippedRelics -> Relic -> Bool
+hasEquippedRelic equippedRelics relic =
+    if equippedRelics.leftHand == Just relic || equippedRelics.rightHand == Just relic then
         True
     else
         False
 
-getStep2MagicalAttackRelicBonus : Attack -> EquippedWithOneEarring -> EquippedWithOneHeroRing -> Damage -> Damage
-getStep2MagicalAttackRelicBonus attack equippedWithOneEarring equippedWithHeroRing (Damage damage) =
-    if isMagicalAttack attack && equippedWithOneEarringOrHeroRing equippedWithOneEarring equippedWithHeroRing == True then
+getStep2aPhysicalAtlasArmletOrHeroRing : Attack -> EquippedRelics -> Damage -> Damage
+getStep2aPhysicalAtlasArmletOrHeroRing attack relics (Damage damage) =
+    if isPhysicalAttack attack && (hasEquippedRelic relics AtlasArmlet || hasEquippedRelic relics HeroRing) then
+        damage * 5 // 4 |> Damage
+    else
+        Damage damage 
+
+-- 2.1 - Step 2b
+
+hasOnly1EquippedRelic : EquippedRelics -> Relic -> Bool
+hasOnly1EquippedRelic equippedRelics relic =
+    if equippedRelics.leftHand == Just relic && equippedRelics.rightHand /= Just relic then
+        True
+    else if equippedRelics.leftHand /= Just relic && equippedRelics.rightHand == Just relic then
+        True
+    else
+        False
+ 
+
+getStep2bEarringOrHeroRing : Attack -> EquippedRelics -> Damage -> Damage
+getStep2bEarringOrHeroRing attack relics (Damage damage) =
+    if isMagicalAttack attack && (hasOnly1EquippedRelic relics Earring || hasOnly1EquippedRelic relics HeroRing) then
         damage * 5 // 4 |> Damage
     else
         Damage damage
 
--- 2.1 Step 2c
-type EquippedWithTwoEarrings = EquippedWithTwoEarrings Bool
-type EquippedWithTwoHeroRings = EquippedWithTwoHeroRings Bool
+-- 2.1 - Step 2c
 
-equippedWithTwoEaringsOrTwoHeroRings : EquippedWithTwoEarrings -> EquippedWithTwoHeroRings -> Bool
-equippedWithTwoEaringsOrTwoHeroRings (EquippedWithTwoEarrings twoEarrings) (EquippedWithTwoHeroRings twoHeroRings) =
-    if twoEarrings == True || twoHeroRings == True then
+has2EquippedRelics : EquippedRelics -> Relic -> Bool
+has2EquippedRelics equippedRelics relic =
+    if equippedRelics.leftHand == Just relic && equippedRelics.rightHand == Just relic then
         True
     else
         False
 
--- 2.1 Step 2c
-getStep2MagicalAttackRelicsBonus : Attack -> EquippedWithTwoEarrings -> EquippedWithTwoHeroRings -> Damage -> Damage
-getStep2MagicalAttackRelicsBonus attack twoEarrings twoHeroRings (Damage damage) =
-    if isMagicalAttack attack && equippedWithTwoEaringsOrTwoHeroRings twoEarrings twoHeroRings == True then
-        damage + (damage // 4) + (damage // 4) |> Damage
+getStep2c2EarringsOrHeroRings : Attack -> EquippedRelics -> Damage -> Damage
+getStep2c2EarringsOrHeroRings attack relics (Damage damage) =
+    if isMagicalAttack attack && (has2EquippedRelics relics Earring || has2EquippedRelics relics HeroRing) then
+        damage + (damage // 4) + (damage //4) |> Damage
     else
         Damage damage
-
-
--- -- getDamageStep2 : Attack -> Bool -> Bool -> Bool -> Bool -> Bool -> Int -> Int
--- -- getDamageStep2 attack equippedWithAtlasArmlet equippedWith1HeroRing equippedWith2HeroRings equippedWith1Earring equippedWith2Earrings damage =
--- --     case attack of
--- --         PlayerPhysicalAttack ->
--- --             if equippedWithAtlasArmlet || equippedWith1HeroRing then
--- --                 getStep2SingleDamageBonus damage
-
--- --             else
--- --                 damage
-
--- --         PlayerMagicalAttack ->
--- --             if equippedWith1Earring || equippedWith1HeroRing then
--- --                 getStep2SingleDamageBonus damage
-
--- --             else if equippedWith2Earrings || equippedWith2HeroRings then
--- --                 getStep2DoubleDamageBonus damage
-
--- --             else
--- --                 damage
-
--- --         _ ->
--- --             damagetw
-
-
-
 
 -- Step 3
 
 getDamageStep3 : Attack -> Damage -> Damage
 getDamageStep3 attack (Damage damage) =
-    if attack == PlayerMagicalMultipleAttack then
+    if isMagicalMultipleTargetAttack attack then
         damage // 2 |> Damage
     else
         Damage damage
 
 
 
--- -- Step 4
+-- Step 4
 
--- type RowPosition
---     = Front
---     | Back
+type RowPosition
+    = Front
+    | Back
 
--- getDamageStep4 : Attack -> RowPosition -> Damage -> Damage
--- getDamageStep4 row damage =
---     if row == Back then
---         toFloat damage / 2 |> floor |> Damage
+getDamageStep4 : Attack -> RowPosition -> Damage -> Damage
+getDamageStep4 attack row (Damage damage) =
+    if isPhysicalAttack attack && row == Back then
+        damage // 2 |> Damage
 
---     else
---         Damage damage
-
-
-
--- -- Step 5
-
--- type CriticalHitDamageMultiplier = CriticalHitDamageMultiplier Int
-
--- startingCriticalHitMultiplier : CriticalHitDamageMultiplier
--- startingCriticalHitMultiplier =
---     CriticalHitDamageMultiplier 0
-
--- -- getCriticalHit : Seed -> Bool
--- -- getCriticalHit seed =
--- --     Tuple.first (getRandomNumberFromRange 1 32 seed) == 32
-
--- type HasMorphStatus = HasMorphStatus Bool
-
--- getMorphStatusMultiplier : HasMorphStatus -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
--- getMorphStatusMultiplier (HasMorphStatus hasMorphStatus) (CriticalHitDamageMultiplier multiplier) =
---     if hasMorphStatus == True then
---         CriticalHitDamageMultiplier (multiplier + 2)
-
---     else
---         CriticalHitDamageMultiplier multiplier
-
--- type HasBerserkStatus = HasBerserkStatus Bool
-
--- getBerserkStatusAndPhysicalAttackMultiplier : Attack -> HasBerserkStatus -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
--- getBerserkStatusAndPhysicalAttackMultiplier attack (HasBerserkStatus hasBerserkStatus) (CriticalHitDamageMultiplier multiplier) =
---     if hasBerserkStatus == True && attack == PlayerPhysicalAttack then
---         CriticalHitDamageMultiplier (multiplier + 1)
---     else
---         CriticalHitDamageMultiplier multiplier
-
-
--- type CriticalHit = CriticalHit Bool
-
--- getCriticalHitMultiplier : CriticalHit -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
--- getCriticalHitMultiplier (CriticalHit criticalHit) (CriticalHitDamageMultiplier multiplier) =
---     if criticalHit == True then
---         CriticalHitDamageMultiplier (multiplier + 2)
---     else
---         CriticalHitDamageMultiplier multiplier
-
--- getStep5Damage : CriticalHitDamageMultiplier -> Damage -> Damage
--- getStep5Damage (CriticalHitDamageMultiplier multiplier) (Damage damage) =
---     (toFloat damage / 2) * (toFloat multiplier) |> floor |> Damage
-
-
--- -- getStep5DamageMultiplier : Attack -> Bool -> Bool -> Bool -> number
--- -- getStep5DamageMultiplier attack hasMorphStatus hasBerserkStatus isCriticalHit =
--- --     let
--- --         multiplier =
--- --             0
--- --     in
--- --     getMorphStatusMultiplier hasMorphStatus multiplier
--- --         |> getBerserkStatusAndPhysicalAttackMultiplier attack hasBerserkStatus
--- --         |> getCriticalHitMultiplier isCriticalHit
-
-
--- -- getDamageStep5 : Attack -> Bool -> Bool -> Bool -> Int -> Int
--- -- getDamageStep5 attack hasMorphStatus hasBerserkStatus isCriticalHit damage =
--- --     getStep5Damage
--- --         (getStep5DamageMultiplier attack hasMorphStatus hasBerserkStatus isCriticalHit)
--- --         damage
+    else
+        Damage damage
 
 
 
--- Step 6
--- 224 was what I had defaulted to
+-- Step 5
+
+type CriticalHitDamageMultiplier = CriticalHitDamageMultiplier Int
+
+startingCriticalHitMultiplier : CriticalHitDamageMultiplier
+startingCriticalHitMultiplier =
+    CriticalHitDamageMultiplier 0
+
+getCriticalHit : Random.Seed -> Bool
+getCriticalHit seed =
+    Tuple.first (getRandomNumberFromRange seed 1 32) == 32
+
+type HasMorphStatus = HasMorphStatus Bool
+
+getMorphStatusMultiplier : HasMorphStatus -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
+getMorphStatusMultiplier (HasMorphStatus hasMorphStatus) (CriticalHitDamageMultiplier multiplier) =
+    if hasMorphStatus == True then
+        CriticalHitDamageMultiplier (multiplier + 2)
+
+    else
+        CriticalHitDamageMultiplier multiplier
+
+type HasBerserkStatus = HasBerserkStatus Bool
+
+getBerserkStatusAndPhysicalAttackMultiplier : Attack -> HasBerserkStatus -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
+getBerserkStatusAndPhysicalAttackMultiplier attack (HasBerserkStatus hasBerserkStatus) (CriticalHitDamageMultiplier multiplier) =
+    if hasBerserkStatus == True && isPhysicalAttack attack then
+        CriticalHitDamageMultiplier (multiplier + 1)
+    else
+        CriticalHitDamageMultiplier multiplier
+
+
+type CriticalHit = CriticalHit Bool
+
+getCriticalHitMultiplier : CriticalHit -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
+getCriticalHitMultiplier (CriticalHit criticalHit) (CriticalHitDamageMultiplier multiplier) =
+    if criticalHit == True then
+        CriticalHitDamageMultiplier (multiplier + 2)
+    else
+        CriticalHitDamageMultiplier multiplier
+
+-- Step 5 - 5a
+getStep5Damage : CriticalHitDamageMultiplier -> Damage -> Damage
+getStep5Damage (CriticalHitDamageMultiplier multiplier) (Damage damage) =
+    (damage + ((damage // 2) * multiplier)) |> Damage
 
 -- Step 6a - random variance
-
-
 
 getStep6aDamageModificationsVariance : Random.Seed -> Damage -> (Damage, Random.Seed)
 getStep6aDamageModificationsVariance seed (Damage damage) =
@@ -617,13 +836,11 @@ getPhysicalDefenseModification : Damage -> Defense -> Damage
 getPhysicalDefenseModification (Damage damage) (Defense defense) =
     (damage * (256 - defense) // 256) + 1 |> Damage
 
-type MagicalDefense = MagicalDefense Int
-
-getMagicalDefenseModification : Damage -> MagicalDefense -> Damage 
-getMagicalDefenseModification (Damage damage) (MagicalDefense defense) =
+getMagicalDefenseModification : Damage -> MagicDefense -> Damage 
+getMagicalDefenseModification (Damage damage) (MagicDefense defense) =
     (damage * (256 - defense) // 256) + 1 |> Damage
 
-getStep6bDefenseDamageModification : Attack -> Damage -> Defense -> MagicalDefense -> Damage
+getStep6bDefenseDamageModification : Attack -> Damage -> Defense -> MagicDefense -> Damage
 getStep6bDefenseDamageModification attack damage def mblock =
     if isPhysicalAttack attack then
         getPhysicalDefenseModification damage def
@@ -653,75 +870,100 @@ getMagicalAttackAgainstShellTarget attack (HasShellStatus shellStatus) (Damage d
     else
         Damage damage 
 
-getStep6cSafeShellDamage : Attack -> PlayableCharacter -> Damage -> Damage
-getStep6cSafeShellDamage attack pc damage =
-    getPhysicalAttackAgainstSafeTarget attack pc.hasSafeStatus damage
-    |> getMagicalAttackAgainstShellTarget attack pc.hasShellStatus
+getHasSafeStatusFromTarget : Target -> HasSafeStatus
+getHasSafeStatusFromTarget target =
+    case target of
+        CharacterTarget pc ->
+            pc.hasSafeStatus
+        MonsterTarget mon ->
+            mon.hasSafeStatus
 
--- type TargetDefending = TargetDefending Bool 
+getHasShellStatusFromTarget : Target -> HasShellStatus
+getHasShellStatusFromTarget target =
+    case target of
+        CharacterTarget pc ->
+            pc.hasShellStatus
+        MonsterTarget mon ->
+            mon.hasShellStatus
+            
+getStep6cSafeShellDamage : Attack -> Target -> Damage -> Damage
+getStep6cSafeShellDamage attack target damage =
+    getPhysicalAttackAgainstSafeTarget attack (getHasSafeStatusFromTarget target) damage
+    |> getMagicalAttackAgainstShellTarget attack (getHasShellStatusFromTarget target)
 
--- getStep6DefendingModification : Attack -> TargetDefending -> Damage -> Damage
--- getStep6DefendingModification attack (TargetDefending defending) (Damage damage) =
---     if attack == PlayerPhysicalAttack || attack == MonsterPhysicalAttack && defending == True then
---         toFloat damage / 2 |> floor |> Damage
---     else
---         Damage damage
+-- Step 6d
+type TargetDefending = TargetDefending Bool 
 
--- getStep6BackRowModification : Attack -> RowPosition -> Damage -> Damage
--- getStep6BackRowModification attack row (Damage damage) =
---     if attack == PlayerPhysicalAttack || attack == MonsterPhysicalAttack && row == Back then
---         toFloat damage / 2 |> floor |> Damage
---     else
---         Damage damage
+getStep6DefendingModification : Attack -> TargetDefending -> Damage -> Damage
+getStep6DefendingModification attack (TargetDefending defending) (Damage damage) =
+    if isPhysicalAttack attack && defending == True then
+        damage // 2 |> Damage
+    else
+        Damage damage
+
+-- Step 6e
+
+getStep6TargetBackRowModification : Attack -> RowPosition -> Damage -> Damage
+getStep6TargetBackRowModification attack row (Damage damage) =
+    if isPhysicalAttack attack && row == Back then
+        damage // 2 |> Damage
+    else
+        Damage damage
+
+-- Step 6f
+
+getStep6fTargetMorphModification : Attack -> HasMorphStatus -> Damage -> Damage
+getStep6fTargetMorphModification attack (HasMorphStatus morphed) (Damage damage) =
+    if isMagicalAttack attack && morphed == True then
+        damage // 2 |> Damage
+    else
+        Damage damage
+
+attackerIsCharacter : Attacker -> Bool
+attackerIsCharacter attacker =
+    case attacker of
+        CharacterAttacker _ ->
+            True
+        MonsterAttacker _ ->
+            False
+
+attackerIsMonster : Attacker -> Bool
+attackerIsMonster attacker =
+    case attacker of
+        CharacterAttacker _ ->
+            False
+        MonsterAttacker _ ->
+            True
+
+targetIsCharacter : Target -> Bool
+targetIsCharacter target =
+    case target of
+        CharacterTarget _ ->
+            True
+        MonsterTarget _ ->
+            False
+
+targetIsMonster : Target -> Bool
+targetIsMonster target =
+    case target of
+        CharacterTarget _ ->
+            False
+        MonsterTarget _ ->
+            True
 
 
--- getStep6MorphModification : Attack -> HasMorphStatus -> Damage -> Damage
--- getStep6MorphModification attack (HasMorphStatus morphed) (Damage damage) =
---     if attack == PlayerMagicalAttack || attack == MonsterMagicalAttack && morphed == True then
---         toFloat damage / 2 |> floor |> Damage
---     else
---         Damage damage
 
--- type TargetIsSelf = TargetIsSelf Bool
--- type TargetIsCharacter = TargetIsCharacter Bool
+getStep6HealingAttack : Attack -> Attacker -> Target -> Damage -> Damage
+getStep6HealingAttack attack attacker target (Damage damage) =
+    case attack of
+        PlayerHealingAttack ->
+            Damage damage
+        _ ->
+            if attackerIsCharacter attacker && targetIsCharacter target then
+                damage // 2 |> Damage
 
--- getStep6HealingAttack : Attack -> TargetIsSelf -> TargetIsCharacter -> Damage -> Damage
--- getStep6HealingAttack attack (TargetIsSelf isSelf) (TargetIsCharacter isCharacter) (Damage damage) =
---     case attack of
---         PlayerHealingAttack ->
---             Damage damage
---         _ ->
---             if isSelf == True && isCharacter == True then
---                 toFloat damage / 2 |> floor |> Damage
-
---             else
---                 Damage damage
-
-
--- -- getStep6Damage :
--- --     Attack
--- --     -> Int
--- --     -> Int
--- --     -> Int
--- --     -> Bool
--- --     -> Bool
--- --     -> Bool
--- --     -> Bool
--- --     -> Bool
--- --     -> Bool
--- --     -> Bool
--- --     -> Int
--- --     -> Int
--- -- getStep6Damage attack variance defense magicalDefense targetHasSafeStatus targetHasShellStatus targetDefending targetIsInBackRow targetHasMorphStatus targetIsSelf targetIsCharacter damage =
--- --     getDamageStep6Basic variance damage
--- --         |> getStep6DefenseModification attack defense magicalDefense
--- --         |> getStep6SafeShellModification attack targetHasSafeStatus targetHasShellStatus
--- --         |> getStep6DefendingModification attack targetDefending
--- --         |> getStep6BackRowModification attack targetIsInBackRow
--- --         |> getStep6MorphModification attack targetHasMorphStatus
--- --         |> getStep6HealingAttack attack targetIsSelf targetIsCharacter
-
-
+            else
+                Damage damage
 
 -- -- Step 7
 
@@ -864,6 +1106,15 @@ isPhysicalAttack attack =
         _ ->
             False
 
+isMonsterPhysicalAttack : Attack -> Bool
+isMonsterPhysicalAttack attack =
+    case attack of
+        MonsterPhysicalAttack ->
+            True
+        MonsterPhysicalMultipleAttack ->
+            True
+        _ ->
+            False
 
 isMagicalAttack : Attack -> Bool
 isMagicalAttack attack =
@@ -880,6 +1131,16 @@ isMagicalAttack attack =
         PlayerMagicalMultipleAttack ->
             True
 
+        _ ->
+            False
+
+isMagicalMultipleTargetAttack : Attack -> Bool
+isMagicalMultipleTargetAttack attack =
+    case attack of
+        PlayerMagicalMultipleAttack ->
+            True
+        MonsterMagicalMultipleAttack ->
+            True
         _ ->
             False
 
