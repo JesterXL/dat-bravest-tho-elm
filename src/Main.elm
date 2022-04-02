@@ -3,7 +3,7 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
-import Battle exposing (getRandomNumberFromRange, terra, playableTerra, locke, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+import Battle exposing (getRandomNumberFromRange, terraStats, playableTerra, dirk, lockeStats, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
 import Task
 
@@ -25,6 +25,7 @@ type Msg
     | Decrement
     | FireSpellAgainstSingleTarget
     | FireSpellAgainstMultipleTargets
+    | SwordPhysicalAttackSingleTarget
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -40,17 +41,26 @@ update msg model =
             let
                 { power } = fireSpell
                 
-                damage = getDamage model.initialSeed PlayerMagicalAttack power (MagicPower 1) (Level 1) playableTerra playableLocke
+                damage = 
+                    getDamage model.initialSeed PlayerMagicalAttack power (MagicPower 1) dirk (Level 1) playableTerra playableLocke
             in
             ( { model | damage = damage }, Cmd.none )
         FireSpellAgainstMultipleTargets ->
             let
                 { power } = fireSpell
-                equippedRelics = { leftHand = Earring, rightHand = Earring }
                 
-                damage = getDamage model.initialSeed PlayerMagicalMultipleAttack power (MagicPower 1) (Level 1) playableTerra playableLocke
+                damage = 
+                    getDamage model.initialSeed PlayerMagicalMultipleAttack power (MagicPower 1) dirk (Level 1) playableTerra playableLocke
             in
             ( { model | damage = damage }, Cmd.none )
+        SwordPhysicalAttackSingleTarget ->
+            let
+                damage = 
+                    getDamage model.initialSeed PlayerPhysicalAttack (SpellPower 0) (MagicPower 0) dirk (Level 1) playableTerra playableLocke
+            in
+            
+            ( { model | damage = damage }, Cmd.none )
+
 
 
 view : Model -> Html Msg
@@ -59,11 +69,12 @@ view model =
         [ button [ onClick Increment ] [ text "+1" ]
         , div [] [ text <| String.fromInt model.count ]
         , button [ onClick Decrement ] [ text "-1" ]
-        , div [][]
+        , div [][text ("Damage: " ++ (String.fromInt model.damage))]
         , button [onClick FireSpellAgainstSingleTarget ][text "Fire Spell Single Target"]
-        , div [][text ("Magic Damage: " ++ (String.fromInt model.damage))]
+        , div [][]
         , button [onClick FireSpellAgainstMultipleTargets ][text "Fire Spell Multiple Targets"]
-        , div [][text ("Magic Damage: " ++ (String.fromInt model.damage))]
+        , div [][]
+        , button [onClick SwordPhysicalAttackSingleTarget][text "Sword Physical Attack Single Target"]
         ]
 
 

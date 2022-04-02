@@ -1,4 +1,4 @@
-module Battle exposing (getRandomNumberFromRange, getDamage, terra, playableTerra, locke, playableLocke, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+module Battle exposing (getRandomNumberFromRange, getDamage, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
 import Task
@@ -14,14 +14,15 @@ getRandomNumberFromRange seed start end =
 
 -- Step 1
 
-getDamage : Random.Seed -> Attack -> SpellPower -> MagicPower -> Level -> PlayableCharacter -> PlayableCharacter -> Int
-getDamage seed attack spellPower magicPower level attacker target =
+getDamage : Random.Seed -> Attack -> SpellPower -> MagicPower -> Weapon -> Level -> PlayableCharacter -> PlayableCharacter -> Int
+getDamage seed attack spellPower magicPower weapon level attacker target =
     getDamageStep1A attack spellPower magicPower level (Damage 0)
     |> getStep2MagicalAttackRelicBonus attack (EquippedWithOneEarring (getEquippedWithOneEarring attacker.equippedRelics)) (EquippedWithOneHeroRing (getEquippedWithOneHeroRing attacker.equippedRelics))
     |> getStep2MagicalAttackRelicsBonus attack (EquippedWithTwoEarrings (getEquippedWithTwoEarrings attacker.equippedRelics)) (EquippedWithTwoHeroRings (getEquippedWithTwoHeroRings attacker.equippedRelics))
     |> getDamageStep3 attack
     |> getStep6aDamageModificationsVariance seed
-    |> (\(damage, newSeed) -> getStep6bDefenseDamageModification attack damage target.character.defense target.character.magicalDefense)
+    |> (\(damage, newSeed) -> ( getStep6bDefenseDamageModification attack damage target.stats.defense target.stats.magicalDefense, newSeed))
+    |> (\(damage, newSeed) -> getStep6cSafeShellDamage attack target damage )
     |> (\damage -> case damage of
         Damage dam ->
             dam)
@@ -101,8 +102,25 @@ type Stamina = Stamina Int
 type Vigor = Vigor Int
 type MagicDefense = MagicDefense Int
 
-type alias Character =
-    { vigor : Vigor
+type Character
+    = Terra
+    | Locke 
+    | Cyan
+    | Shadow 
+    | Edgar 
+    | Sabin
+    | Celes
+    | Strago
+    | Relm 
+    | Setzer 
+    | Mog
+    | Gau
+    | Gogo
+    | Umaro
+
+type alias CharacterStats =
+    { character : Character
+    , vigor : Vigor
     , speed : Speed 
     , stamina : Stamina 
     , magicPower : MagicPower 
@@ -113,12 +131,15 @@ type alias Character =
     , evade : Evade }
 
 type alias PlayableCharacter =
-    { character : Character
-    , equippedRelics : EquippedRelics }
+    { stats : CharacterStats
+    , equippedRelics : EquippedRelics
+    , hasSafeStatus : HasSafeStatus
+    , hasShellStatus : HasShellStatus }
 
-terra : Character
-terra =
-    { vigor = Vigor 31
+terraStats : CharacterStats
+terraStats =
+    { character = Terra
+    , vigor = Vigor 31
     , speed = Speed 33
     , stamina = Stamina 28
     , magicPower = MagicPower 39
@@ -130,12 +151,15 @@ terra =
 
 playableTerra : PlayableCharacter 
 playableTerra =
-    { character = terra
-    , equippedRelics = { leftHand = Earring, rightHand = Earring } }
+    { stats = terraStats
+    , equippedRelics = { leftHand = Earring, rightHand = Earring }
+    , hasSafeStatus = HasSafeStatus False 
+    , hasShellStatus = HasShellStatus False }
 
-locke : Character
-locke =
-    { vigor = Vigor 37
+lockeStats : CharacterStats
+lockeStats =
+    { character = Locke
+    , vigor = Vigor 37
     , speed = Speed 40
     , stamina = Stamina 31
     , magicPower = MagicPower 28
@@ -147,8 +171,10 @@ locke =
 
 playableLocke : PlayableCharacter
 playableLocke =
-    { character = locke
-    , equippedRelics = { leftHand = HeroRing, rightHand = SneakRing }}
+    { stats = lockeStats
+    , equippedRelics = { leftHand = HeroRing, rightHand = SneakRing }
+    , hasSafeStatus = HasSafeStatus False 
+    , hasShellStatus = HasShellStatus False }
 
 -- 2.1 - Step 1 magical attacks made by characters
 
@@ -183,6 +209,24 @@ type Relic
 type alias EquippedRelics =
     { leftHand : Relic
     , rightHand : Relic }
+
+type alias Weapon =
+    { name : String 
+    , power : BattlePower
+    , hitRate : HitRate 
+    , price : Price 
+    , equippableCharacters : List Character }
+
+dirk : Weapon
+dirk =
+    { name = "Dirk"
+    , power = BattlePower 26
+    , hitRate = HitRate 180
+    , price = Price 150 
+    , equippableCharacters = [ Terra, Locke, Shadow, Edgar, Celes, Strago, Relm, Setzer, Mog, Gogo]}
+
+type Price = Price Int
+
 
 -- 2.1 Step 2b
 getEquippedWithOneEarring : EquippedRelics -> Bool
@@ -589,23 +633,30 @@ getStep6bDefenseDamageModification attack damage def mblock =
         damage 
 
 
--- type HasSafeStatus = HasSafeStatus Bool
+-- 2.1 - Step 6c
 
--- getPhysicalAttackAgainstSafeTarget : Attack -> HasSafeStatus -> Damage -> Damage
--- getPhysicalAttackAgainstSafeTarget attack (HasSafeStatus safeStatus) (Damage damage) =
---     if attack == PlayerPhysicalAttack || attack == MonsterPhysicalAttack && safeStatus == True then
---         ((toFloat damage) * 170 / 256) + 1 |> floor |> Damage
---     else
---         Damage damage
+type HasSafeStatus = HasSafeStatus Bool
 
--- type HasShellStatus = HasShellStatus Bool 
+getPhysicalAttackAgainstSafeTarget : Attack -> HasSafeStatus -> Damage -> Damage
+getPhysicalAttackAgainstSafeTarget attack (HasSafeStatus safeStatus) (Damage damage) =
+    if isPhysicalAttack attack && safeStatus == True then
+        (damage * 170 // 256) + 1 |> Damage
+    else
+        Damage damage
 
--- getMagicalAttackAgainstShellTarget : Attack -> HasShellStatus -> Damage -> Damage
--- getMagicalAttackAgainstShellTarget attack (HasShellStatus shellStatus) (Damage damage) =
---     if attack == PlayerMagicalAttack || attack == MonsterMagicalAttack && shellStatus == True then
---         ((toFloat damage) * 170 / 256) + 1 |> Damage
---     else
---         Damage damage 
+type HasShellStatus = HasShellStatus Bool 
+
+getMagicalAttackAgainstShellTarget : Attack -> HasShellStatus -> Damage -> Damage
+getMagicalAttackAgainstShellTarget attack (HasShellStatus shellStatus) (Damage damage) =
+    if isMagicalAttack attack && shellStatus == True then
+        (damage * 170 // 256) + 1 |> Damage
+    else
+        Damage damage 
+
+getStep6cSafeShellDamage : Attack -> PlayableCharacter -> Damage -> Damage
+getStep6cSafeShellDamage attack pc damage =
+    getPhysicalAttackAgainstSafeTarget attack pc.hasSafeStatus damage
+    |> getMagicalAttackAgainstShellTarget attack pc.hasShellStatus
 
 -- type TargetDefending = TargetDefending Bool 
 
