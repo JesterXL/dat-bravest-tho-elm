@@ -42,7 +42,7 @@ update msg model =
                 { power } = fireSpell
                 
                 damage = 
-                    getDamage model.initialSeed PlayerMagicalAttack power (MagicPower 1) dirk (Level 1) terraAttacker lockeTarget
+                    getDamage model.initialSeed PlayerMagicalAttack power dirk terraAttacker lockeTarget
             in
             ( { model | damage = damage }, Cmd.none )
         FireSpellAgainstMultipleTargets ->
@@ -50,13 +50,13 @@ update msg model =
                 { power } = fireSpell
                 
                 damage = 
-                    getDamage model.initialSeed PlayerMagicalMultipleAttack power (MagicPower 1) dirk (Level 1) terraAttacker lockeTarget
+                    getDamage model.initialSeed PlayerMagicalMultipleAttack power dirk terraAttacker lockeTarget
             in
             ( { model | damage = damage }, Cmd.none )
         SwordPhysicalAttackSingleTarget ->
             let
                 damage = 
-                    getDamage model.initialSeed PlayerPhysicalAttack (SpellPower 0) (MagicPower 0) dirk (Level 1) terraAttacker lockeTarget
+                    getDamage model.initialSeed PlayerPhysicalAttack (SpellPower 0) dirk terraAttacker lockeTarget
             in
             
             ( { model | damage = damage }, Cmd.none )

@@ -21,12 +21,13 @@ type Target
 
 -- Step 1
 
-getDamage : Random.Seed -> Attack -> SpellPower -> MagicPower -> WeaponStats -> Level -> Attacker -> Target -> Int
-getDamage seed attack spellPower magicPower weaponStats level attacker target =
-    getDamageStep1A attack spellPower magicPower level (Damage 0)
-    -- |> getStep2MagicalAttackRelicBonus attack (EquippedWithOneEarring (getEquippedWithOneEarring attacker.equippedRelics)) (EquippedWithOneHeroRing (getEquippedWithOneHeroRing attacker.equippedRelics))
-    -- |> getStep2MagicalAttackRelicsBonus attack (EquippedWithTwoEarrings (getEquippedWithTwoEarrings attacker.equippedRelics)) (EquippedWithTwoHeroRings (getEquippedWithTwoHeroRings attacker.equippedRelics))
+getDamage : Random.Seed -> Attack -> SpellPower -> WeaponStats -> Attacker -> Target -> Int
+getDamage seed attack spellPower weaponStats attacker target =
+    getDamageStep1A attack attacker spellPower (Damage 0)
+    |> getStep21Step1PhysicalAttackDamage attack attacker
+    |> getStep21Step2Damage attack attacker
     |> getDamageStep3 attack
+    |> getDamageStep4 attack attacker
     |> getStep6aDamageModificationsVariance seed
     |> (\(damage, newSeed) -> (
         case target of
@@ -135,6 +136,7 @@ type Character
 
 type alias CharacterStats =
     { character : Character
+    , level : Level
     , vigor : Vigor
     , speed : Speed 
     , stamina : Stamina 
@@ -173,11 +175,13 @@ type Monster
 
 type alias MonsterStats =
     { type_ : Monster
+    , level : Level
     , hitPoints : HitPoints
     , magicPoints : MagicPoints
     , xp : XP
     , gold : Gold
     , battlePower : BattlePower
+    , vigor : Vigor
     , hitRate : HitRate
     , defense : Defense
     , evade : Evade
@@ -206,11 +210,13 @@ type alias PlayableCharacter =
     , equippedRelics : EquippedRelics
     , equippedWeapons : EquippedWeapons
     , hasSafeStatus : HasSafeStatus
-    , hasShellStatus : HasShellStatus }
+    , hasShellStatus : HasShellStatus
+    , rowPosition : RowPosition }
 
 terraStats : CharacterStats
 terraStats =
     { character = Terra
+    , level = Level 1
     , vigor = Vigor 31
     , speed = Speed 33
     , stamina = Stamina 28
@@ -227,7 +233,8 @@ playableTerra =
     , equippedRelics = { leftHand = Just Earring, rightHand = Just Earring }
     , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon mithrilKnife) }
     , hasSafeStatus = HasSafeStatus False 
-    , hasShellStatus = HasShellStatus False }
+    , hasShellStatus = HasShellStatus False
+    , rowPosition = Front }
 
 terraAttacker : Attacker
 terraAttacker =
@@ -236,6 +243,7 @@ terraAttacker =
 lockeStats : CharacterStats
 lockeStats =
     { character = Locke
+    , level = Level 1
     , vigor = Vigor 37
     , speed = Speed 40
     , stamina = Stamina 31
@@ -252,7 +260,8 @@ playableLocke =
     , equippedRelics = { leftHand = Just HeroRing, rightHand = Just SneakRing }
     , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon dirk) }
     , hasSafeStatus = HasSafeStatus False 
-    , hasShellStatus = HasShellStatus False }
+    , hasShellStatus = HasShellStatus False
+    , rowPosition = Front }
 
 lockeTarget : Target
 lockeTarget =
@@ -261,12 +270,31 @@ lockeTarget =
 
 -- 2.1 - Step 1 magical attacks made by characters
 
-getDamageStep1A : Attack -> SpellPower -> MagicPower -> Level -> Damage -> Damage
-getDamageStep1A attack (SpellPower spellPower) (MagicPower magicPower) (Level level) (Damage damage) =
+getDamageStep1ACharacters : Attack -> SpellPower -> MagicPower -> Level -> Damage -> Damage
+getDamageStep1ACharacters attack (SpellPower spellPower) (MagicPower magicPower) (Level level) (Damage damage) =
     if isMagicalAttack attack then
         Damage (spellPower * 4 + (level * magicPower * spellPower // 32) + damage)
     else
         Damage damage
+
+-- 2.1 - Step 1 magical attacks made by monsters
+getDamageStep1AMonsters : Attack -> SpellPower -> MagicPower -> Level -> Damage -> Damage
+getDamageStep1AMonsters attack (SpellPower spellPower) (MagicPower magicPower) (Level level) (Damage damage) =
+    if isMagicalAttack attack then
+        Damage (spellPower * 4 + (level * magicPower * 3 // 2) * spellPower // 32)
+    else
+        Damage damage
+
+getDamageStep1A : Attack -> Attacker -> SpellPower -> Damage -> Damage
+getDamageStep1A attack attacker spellPower damage =
+    case attacker of
+        CharacterAttacker playChar ->
+            getDamageStep1ACharacters attack spellPower playChar.stats.magicPower playChar.stats.level damage
+        MonsterAttacker playMon ->
+            getDamageStep1AMonsters attack spellPower playMon.stats.magicPower playMon.stats.level damage
+
+
+
 
 type Relic
     = AtlasArmlet
@@ -589,8 +617,8 @@ getEquippedWithTwoHeroRings { leftHand, rightHand } =
 
 -- 2.1 - Step 1a
 
-vigorDouble : Vigor -> Vigor
-vigorDouble (Vigor vigor) =
+getStep1aPhysicalAttack : Vigor -> Vigor
+getStep1aPhysicalAttack (Vigor vigor) =
     let
         vigor2 = vigor * 2
     in
@@ -604,14 +632,14 @@ vigorDouble (Vigor vigor) =
 
 type AttackPower = AttackPower Int
 
-getStep1bAttackPower : Vigor -> BattlePower -> AttackPower 
-getStep1bAttackPower (Vigor vigor) (BattlePower power) =
+getStep1bAttackPower : BattlePower -> Vigor -> AttackPower 
+getStep1bAttackPower  (BattlePower power) (Vigor vigor) =
     AttackPower (power + vigor)
 
 -- 2.1 - Step 1c
 
-gauntletIncreasedAttack : AttackPower -> BattlePower -> EquippedRelics -> AttackPower
-gauntletIncreasedAttack (AttackPower attackPower) (BattlePower battlePower) equippedRelics =
+getStep1cGauntletIncreasedAttack : BattlePower -> EquippedRelics -> AttackPower -> AttackPower
+getStep1cGauntletIncreasedAttack (BattlePower battlePower) equippedRelics (AttackPower attackPower) =
     if equippedRelics.leftHand == Just Gauntlet || equippedRelics.rightHand == Just Gauntlet then
         attackPower + battlePower * 3 // 4 |> AttackPower
     else
@@ -676,6 +704,15 @@ getStep1fDamageFromGenjiGlove attack equippedRelics equippedWeapons (Damage dama
     else
         Damage damage 
 
+get21Step1PhysicalAttackDamageByCharacters : Attack -> PlayableCharacter -> Damage -> Damage
+get21Step1PhysicalAttackDamageByCharacters attack playChar damage =
+    getStep1aPhysicalAttack playChar.stats.vigor
+    |> getStep1bAttackPower playChar.stats.battlePower
+    |> getStep1cGauntletIncreasedAttack playChar.stats.battlePower playChar.equippedRelics
+    |> getDamageStep1dBasicDamage playChar.stats.battlePower playChar.stats.level
+    |> getStep1eOfferingDecreasedDamage playChar.equippedRelics
+    |> getStep1fDamageFromGenjiGlove attack playChar.equippedRelics playChar.equippedWeapons
+
 
 getStep1aMonsterPhysicalAttackDamage : Attack -> Vigor -> BattlePower -> Level -> Damage -> Damage
 getStep1aMonsterPhysicalAttackDamage attack (Vigor vigor) (BattlePower battlePower) (Level level) (Damage damage) =
@@ -683,6 +720,14 @@ getStep1aMonsterPhysicalAttackDamage attack (Vigor vigor) (BattlePower battlePow
         level * level * (battlePower * 4 + vigor) // 256 + damage |> Damage
     else
         Damage damage
+
+getStep21Step1PhysicalAttackDamage : Attack -> Attacker -> Damage -> Damage
+getStep21Step1PhysicalAttackDamage attack attacker damage =
+    case attacker of
+        CharacterAttacker playChar ->
+            get21Step1PhysicalAttackDamageByCharacters attack playChar damage
+        MonsterAttacker playMon ->
+            getStep1aMonsterPhysicalAttackDamage attack playMon.stats.vigor playMon.stats.battlePower playMon.stats.level damage
 
 
 
@@ -743,6 +788,17 @@ getStep2c2EarringsOrHeroRings attack relics (Damage damage) =
     else
         Damage damage
 
+getStep21Step2Damage : Attack -> Attacker -> Damage -> Damage
+getStep21Step2Damage attack attacker damage =
+    case attacker of
+        CharacterAttacker playChar ->
+            getStep2aPhysicalAtlasArmletOrHeroRing attack playChar.equippedRelics damage
+            |> getStep2bEarringOrHeroRing attack playChar.equippedRelics
+            |> getStep2c2EarringsOrHeroRings attack playChar.equippedRelics
+        MonsterAttacker _ ->
+            damage
+
+
 -- Step 3
 
 getDamageStep3 : Attack -> Damage -> Damage
@@ -760,13 +816,17 @@ type RowPosition
     = Front
     | Back
 
-getDamageStep4 : Attack -> RowPosition -> Damage -> Damage
-getDamageStep4 attack row (Damage damage) =
-    if isPhysicalAttack attack && row == Back then
-        damage // 2 |> Damage
+getDamageStep4 : Attack -> Attacker -> Damage -> Damage
+getDamageStep4 attack attacker (Damage damage) =
+    case attacker of
+        CharacterAttacker playChar ->        
+            if isPhysicalAttack attack && playChar.rowPosition == Back then
+                damage // 2 |> Damage
 
-    else
-        Damage damage
+            else
+                Damage damage
+        MonsterAttacker _ ->
+            Damage damage
 
 
 
