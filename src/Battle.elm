@@ -965,19 +965,20 @@ getStep6HealingAttack attack attacker target (Damage damage) =
             else
                 Damage damage
 
--- -- Step 7
+-- Step 7
 
--- type DamageMultiplier = DamageMultiplier Int
+type DamageMultiplier = DamageMultiplier Int
 
--- type HittingTargetsBack = HittingTargetsBack Bool
+type HittingTargetsBack = HittingTargetsBack Bool
 
--- initialDamageMultiplier : DamageMultiplier
--- initialDamageMultiplier =
---     DamageMultiplier 0
+initialDamageMultiplier : DamageMultiplier
+initialDamageMultiplier =
+    DamageMultiplier 0
 
--- getStep7DamageMultiplier : Attack -> HittingTargetsBack -> DamageMultiplier -> DamageMultiplier
--- getStep7DamageMultiplier attack (HittingTargetsBack hittingTargetsBack) (DamageMultiplier multiplier) =
---     if attack == PlayerPhysicalAttack || attack == MonsterPhysicalAttack && hittingTargetsBack == True then
+-- Step 7a
+-- getStep7aDamageMultiplier : Attack -> HittingTargetsBack -> DamageMultiplier -> DamageMultiplier
+-- getStep7aDamageMultiplier attack (HittingTargetsBack hittingTargetsBack) (DamageMultiplier multiplier) =
+--     if isPhysicalAttack attack && hittingTargetsBack == True then
 --         DamageMultiplier (multiplier + 1)
 --     else
 --         DamageMultiplier multiplier
@@ -989,50 +990,67 @@ getStep6HealingAttack attack attacker target (Damage damage) =
 --             damage + ((damage // 2) * multi) |> Damage
 
 
--- -- Step 8
+-- Step 8
 
--- type HasPetrifyStatus = HasPetrifyStatus Bool
+type HasPetrifyStatus = HasPetrifyStatus Bool
 
--- getDamageStep8 : HasPetrifyStatus -> Damage -> Damage
--- getDamageStep8 (HasPetrifyStatus petrified) damage =
---     if petrified == True then
---         Damage 0
+getDamageStep8 : HasPetrifyStatus -> Damage -> Damage
+getDamageStep8 (HasPetrifyStatus petrified) damage =
+    if petrified == True then
+        Damage 0
 
---     else
---         damage
-
-
-
--- -- Step 9
+    else
+        damage
 
 
--- type ElementEffect
---     = ElementHasBeenNullified
---     | TargetAbsorbsElement
---     | TargetIsImmuneToElement
---     | TargetIsResistantToElement
---     | TargetIsWeakToElement
 
+-- Step 9
 
--- -- TODO/FIXME: This needs to be procedural, but not sure how to do that yet.
--- getDamageStep9 : ElementEffect -> Damage -> Damage
--- getDamageStep9 elementEffect (Damage damage) =
---     case elementEffect of
---         ElementHasBeenNullified ->
---             Damage 0
+type ElementEffect
+    = ElementHasBeenNullified
+    | TargetAbsorbsElement
+    | TargetIsImmuneToElement
+    | TargetIsResistantToElement
+    | TargetIsWeakToElement
 
---         TargetAbsorbsElement ->
---             Damage (damage * -1)
+-- Step 9a
 
---         TargetIsImmuneToElement ->
---             Damage 0
+getStep9aElementNullified : ElementEffect -> Damage -> Damage
+getStep9aElementNullified elementEffect damage =
+    if elementEffect == ElementHasBeenNullified then
+        Damage 0
+    else
+        damage
 
---         TargetIsResistantToElement ->
---             toFloat damage / 2 |> floor |> Damage
+-- NOTE: for now, just negativeing the damage invert to indicate healing
+-- best english evarrr
+getStep9bAborbsElement : ElementEffect -> Damage -> Damage
+getStep9bAborbsElement effect (Damage damage) =
+    if effect == TargetAbsorbsElement then
+        damage * -1 |> Damage
+    else
+        Damage damage
 
---         TargetIsWeakToElement ->
---             Damage (damage * 2)
+getStep9cImmuneElement : ElementEffect -> Damage -> Damage
+getStep9cImmuneElement effect damage =
+    if effect == TargetIsImmuneToElement then
+        Damage 0
+    else
+        damage
 
+getStep9dResistentElement : ElementEffect -> Damage -> Damage
+getStep9dResistentElement effect (Damage damage) =
+    if effect == TargetIsResistantToElement then
+        damage // 2 |> Damage
+    else
+        Damage damage
+
+getStep9eWeakElement : ElementEffect -> Damage -> Damage
+getStep9eWeakElement effect (Damage damage) =
+    if effect == TargetIsWeakToElement then
+        damage * 2 |> Damage
+    else
+        Damage damage
 
 
 -- -- Hit Determinism
