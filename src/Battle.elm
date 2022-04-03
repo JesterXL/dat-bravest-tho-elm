@@ -28,7 +28,8 @@ getDamage seed attack spellPower weaponStats attacker target =
     |> getStep21Step2Damage attack attacker
     |> getDamageStep3 attack
     |> getDamageStep4 attack attacker
-    |> getStep6aDamageModificationsVariance seed
+    |> getStep5Damage seed attack attacker
+    |> (\(step5Damage, newStep5Seed) -> getStep6aDamageModificationsVariance newStep5Seed step5Damage)
     |> (\(damage, newSeed) -> (
         case target of
             CharacterTarget playingCharacter ->
@@ -211,6 +212,8 @@ type alias PlayableCharacter =
     , equippedWeapons : EquippedWeapons
     , hasSafeStatus : HasSafeStatus
     , hasShellStatus : HasShellStatus
+    , hasMorphStatus : HasMorphStatus
+    , hasBerserkStatus : HasBerserkStatus
     , rowPosition : RowPosition }
 
 terraStats : CharacterStats
@@ -234,6 +237,8 @@ playableTerra =
     , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon mithrilKnife) }
     , hasSafeStatus = HasSafeStatus False 
     , hasShellStatus = HasShellStatus False
+    , hasMorphStatus = HasMorphStatus False
+    , hasBerserkStatus = HasBerserkStatus False 
     , rowPosition = Front }
 
 terraAttacker : Attacker
@@ -261,6 +266,8 @@ playableLocke =
     , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon dirk) }
     , hasSafeStatus = HasSafeStatus False 
     , hasShellStatus = HasShellStatus False
+    , hasMorphStatus = HasMorphStatus False
+    , hasBerserkStatus = HasBerserkStatus False
     , rowPosition = Front }
 
 lockeTarget : Target
@@ -838,10 +845,6 @@ startingCriticalHitMultiplier : CriticalHitDamageMultiplier
 startingCriticalHitMultiplier =
     CriticalHitDamageMultiplier 0
 
-getCriticalHit : Random.Seed -> Bool
-getCriticalHit seed =
-    Tuple.first (getRandomNumberFromRange seed 1 32) == 32
-
 type HasMorphStatus = HasMorphStatus Bool
 
 getMorphStatusMultiplier : HasMorphStatus -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
@@ -864,6 +867,15 @@ getBerserkStatusAndPhysicalAttackMultiplier attack (HasBerserkStatus hasBerserkS
 
 type CriticalHit = CriticalHit Bool
 
+getCriticalHit : Random.Seed -> (CriticalHit, Random.Seed)
+getCriticalHit seed =
+    let
+        (result, newSeed)  = getRandomNumberFromRange seed 1 32
+        crit = CriticalHit (result == 32)
+    in
+    (crit, newSeed)
+
+
 getCriticalHitMultiplier : CriticalHit -> CriticalHitDamageMultiplier -> CriticalHitDamageMultiplier
 getCriticalHitMultiplier (CriticalHit criticalHit) (CriticalHitDamageMultiplier multiplier) =
     if criticalHit == True then
@@ -872,9 +884,23 @@ getCriticalHitMultiplier (CriticalHit criticalHit) (CriticalHitDamageMultiplier 
         CriticalHitDamageMultiplier multiplier
 
 -- Step 5 - 5a
-getStep5Damage : CriticalHitDamageMultiplier -> Damage -> Damage
-getStep5Damage (CriticalHitDamageMultiplier multiplier) (Damage damage) =
-    (damage + ((damage // 2) * multiplier)) |> Damage
+getStep5Damage : Random.Seed -> Attack -> Attacker -> Damage -> (Damage, Random.Seed)
+getStep5Damage seed attack attacker (Damage damage) =
+    case attacker of
+        CharacterAttacker playChar ->
+            let
+                (crit, newSeed) = getCriticalHit seed
+            in
+            getMorphStatusMultiplier playChar.hasMorphStatus startingCriticalHitMultiplier
+            |> getBerserkStatusAndPhysicalAttackMultiplier attack playChar.hasBerserkStatus
+            |> getCriticalHitMultiplier crit
+            |> (\(CriticalHitDamageMultiplier multiplier) -> (damage + ((damage // 2) * multiplier)))
+            |> (\finalDamage -> (Damage finalDamage, newSeed))
+        MonsterAttacker _ ->
+            (Damage damage, seed)
+
+
+    
 
 -- Step 6a - random variance
 
