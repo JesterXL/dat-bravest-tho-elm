@@ -1,4 +1,4 @@
-module Battle exposing (getRandomNumberFromRange, getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+module Battle exposing (getRandomNumberFromRange, Formation(..), getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
 import Task
@@ -21,8 +21,8 @@ type Target
 
 -- Step 1
 
-getDamage : Random.Seed -> Attack -> SpellPower -> WeaponStats -> Attacker -> Target -> Int
-getDamage seed attack spellPower weaponStats attacker target =
+getDamage : Random.Seed -> Formation -> Attack -> SpellPower -> WeaponStats -> Attacker -> Target -> (Int, Random.Seed)
+getDamage seed formation attack spellPower weaponStats attacker target =
     getDamageStep1A attack attacker spellPower (Damage 0)
     |> getStep21Step1PhysicalAttackDamage attack attacker
     |> getStep21Step2Damage attack attacker
@@ -30,19 +30,16 @@ getDamage seed attack spellPower weaponStats attacker target =
     |> getDamageStep4 attack attacker
     |> getStep5Damage seed attack attacker
     |> (\(step5Damage, newStep5Seed) -> getStep6aDamageModificationsVariance newStep5Seed step5Damage)
-    |> (\(damage, newSeed) -> (
-        case target of
-            CharacterTarget playingCharacter ->
-                (getStep6bDefenseDamageModification attack damage playingCharacter.stats.defense playingCharacter.stats.magicDefense, newSeed)
-            MonsterTarget playingMonster ->
-                (getStep6bDefenseDamageModification attack damage playingMonster.stats.defense playingMonster.stats.magicDefense, newSeed)
-            
-        )
-    )
-    |> (\(damage, newSeed) -> getStep6cSafeShellDamage attack target damage )
-    |> (\damage -> case damage of
+    |> (\(damage, newSeed) -> (getStep6bDefenseModificationTarget attack target damage, newSeed) )
+    |> (\(damage, newSeed) -> (getStep6cSafeShellDamage attack target damage, newSeed) )
+    |> (\(damage, newSeed) -> (getStep6dDefendingModification attack target damage, newSeed) )
+    |> (\(damage, newSeed) -> (getStep6eTargetBackRowModification attack target damage, newSeed))
+    |> (\(damage, newSeed) -> (getStep6fTargetMorphModification attack target damage, newSeed))
+    |> (\(damage, newSeed) -> (getStep6gCharacterOnCharacterOrHealingAttack attack attacker target damage, newSeed))
+    |> (\(damage, newSeed) -> (getStep7Damage formation attack damage, newSeed))
+    |> (\(damage, newSeed) -> case damage of
         Damage dam ->
-            dam)
+            (dam, newSeed))
 
 type Attack
     = PlayerPhysicalAttack
@@ -72,6 +69,14 @@ type SpecialAttack
     | X_FER
     | GRAV_BOMB
 
+type alias Preemptive = Bool
+
+type Formation
+    = NormalFormation Preemptive
+    | BackFormation
+    | PincerFormation
+    | SideFormation Preemptive
+
 type Damage = Damage Int
 type SpellPower = SpellPower Int
 type Level = Level Int
@@ -87,7 +92,7 @@ type alias Spell =
     , physical : Physical
     , ignoresDefense : IgnoresDefense
     , unblockable : Unblockable
-    , hitRate: HitRate }
+    , hitRate : HitRate }
 
 type MagicType
     = BlackMagic
@@ -196,10 +201,14 @@ type alias MonsterStats =
     , noEffect : List Element
     , weak : List Element }
 
+-- Monster's don't have a row position, but it makes it easier
+-- if we treat them like a character through the Damage functions,
+-- so for now I'll just assume all monsters are Front.
 type alias PlayingMonster =
     { stats : MonsterStats
     , hasSafeStatus : HasSafeStatus
-    , hasShellStatus : HasShellStatus }
+    , hasShellStatus : HasShellStatus
+    , rowPosition : RowPosition }
 
 type Gold = Gold Int
 type HitPoints = HitPoints Int
@@ -214,6 +223,7 @@ type alias PlayableCharacter =
     , hasShellStatus : HasShellStatus
     , hasMorphStatus : HasMorphStatus
     , hasBerserkStatus : HasBerserkStatus
+    , defending : Defending
     , rowPosition : RowPosition }
 
 terraStats : CharacterStats
@@ -239,6 +249,7 @@ playableTerra =
     , hasShellStatus = HasShellStatus False
     , hasMorphStatus = HasMorphStatus False
     , hasBerserkStatus = HasBerserkStatus False 
+    , defending = Defending False
     , rowPosition = Front }
 
 terraAttacker : Attacker
@@ -268,6 +279,7 @@ playableLocke =
     , hasShellStatus = HasShellStatus False
     , hasMorphStatus = HasMorphStatus False
     , hasBerserkStatus = HasBerserkStatus False
+    , defending = Defending False
     , rowPosition = Front }
 
 lockeTarget : Target
@@ -935,7 +947,14 @@ getStep6bDefenseDamageModification attack damage def mblock =
     else
         damage 
 
-
+getStep6bDefenseModificationTarget : Attack -> Target -> Damage -> Damage
+getStep6bDefenseModificationTarget attack target damage =
+    case target of
+        CharacterTarget playingCharacter ->
+            getStep6bDefenseDamageModification attack damage playingCharacter.stats.defense playingCharacter.stats.magicDefense
+        MonsterTarget playingMonster ->
+            getStep6bDefenseDamageModification attack damage playingMonster.stats.defense playingMonster.stats.magicDefense
+        
 -- 2.1 - Step 6c
 
 type HasSafeStatus = HasSafeStatus Bool
@@ -978,29 +997,57 @@ getStep6cSafeShellDamage attack target damage =
     |> getMagicalAttackAgainstShellTarget attack (getHasShellStatusFromTarget target)
 
 -- Step 6d
-type TargetDefending = TargetDefending Bool 
+type Defending = Defending Bool 
 
-getStep6DefendingModification : Attack -> TargetDefending -> Damage -> Damage
-getStep6DefendingModification attack (TargetDefending defending) (Damage damage) =
-    if isPhysicalAttack attack && defending == True then
-        damage // 2 |> Damage
-    else
-        Damage damage
+getIsDefending : PlayableCharacter -> Bool
+getIsDefending playChar =
+    case playChar.defending of
+        Defending def ->
+            def
+
+getStep6dDefendingModification : Attack -> Target -> Damage -> Damage
+getStep6dDefendingModification attack target (Damage damage) =
+    case target of
+        CharacterTarget playChar ->
+            if isPhysicalAttack attack && (getIsDefending playChar) == True then
+                damage // 2 |> Damage
+            else
+                Damage damage
+        MonsterTarget _ ->
+            Damage damage
 
 -- Step 6e
 
-getStep6TargetBackRowModification : Attack -> RowPosition -> Damage -> Damage
-getStep6TargetBackRowModification attack row (Damage damage) =
-    if isPhysicalAttack attack && row == Back then
+getTargetsRow : Target -> RowPosition
+getTargetsRow target =
+    case target of
+        CharacterTarget playChar ->
+            playChar.rowPosition
+        MonsterTarget playMon ->
+            playMon.rowPosition
+
+getStep6eTargetBackRowModification : Attack -> Target -> Damage -> Damage
+getStep6eTargetBackRowModification attack target (Damage damage) =
+    if isPhysicalAttack attack && (getTargetsRow target) == Back then
         damage // 2 |> Damage
     else
         Damage damage
 
 -- Step 6f
 
-getStep6fTargetMorphModification : Attack -> HasMorphStatus -> Damage -> Damage
-getStep6fTargetMorphModification attack (HasMorphStatus morphed) (Damage damage) =
-    if isMagicalAttack attack && morphed == True then
+getTargetMorphStatus : Target -> Bool
+getTargetMorphStatus target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.hasMorphStatus of
+                HasMorphStatus hasIt ->
+                    hasIt
+        MonsterTarget _ ->
+            False
+
+getStep6fTargetMorphModification : Attack -> Target -> Damage -> Damage
+getStep6fTargetMorphModification attack target (Damage damage) =
+    if isMagicalAttack attack && (getTargetMorphStatus target) == True then
         damage // 2 |> Damage
     else
         Damage damage
@@ -1038,9 +1085,9 @@ targetIsMonster target =
             True
 
 
-
-getStep6HealingAttack : Attack -> Attacker -> Target -> Damage -> Damage
-getStep6HealingAttack attack attacker target (Damage damage) =
+-- 2.1 - Step 6g
+getStep6gCharacterOnCharacterOrHealingAttack : Attack -> Attacker -> Target -> Damage -> Damage
+getStep6gCharacterOnCharacterOrHealingAttack attack attacker target (Damage damage) =
     case attack of
         PlayerHealingAttack ->
             Damage damage
@@ -1053,27 +1100,14 @@ getStep6HealingAttack attack attacker target (Damage damage) =
 
 -- Step 7
 
-type DamageMultiplier = DamageMultiplier Int
+-- 2.1 - Step 7a
 
-type HittingTargetsBack = HittingTargetsBack Bool
-
-initialDamageMultiplier : DamageMultiplier
-initialDamageMultiplier =
-    DamageMultiplier 0
-
--- Step 7a
--- getStep7aDamageMultiplier : Attack -> HittingTargetsBack -> DamageMultiplier -> DamageMultiplier
--- getStep7aDamageMultiplier attack (HittingTargetsBack hittingTargetsBack) (DamageMultiplier multiplier) =
---     if isPhysicalAttack attack && hittingTargetsBack == True then
---         DamageMultiplier (multiplier + 1)
---     else
---         DamageMultiplier multiplier
-
--- getStep7Damage : Attack -> HittingTargetsBack -> DamageMultiplier -> Damage -> Damage
--- getStep7Damage attack hittingTargetsBack multiplier (Damage damage) =
---     case getStep7DamageMultiplier attack hittingTargetsBack multiplier of
---         DamageMultiplier multi ->
---             damage + ((damage // 2) * multi) |> Damage
+getStep7Damage : Formation -> Attack -> Damage -> Damage
+getStep7Damage formation attack (Damage damage) =
+    if isPhysicalAttack attack && formation == BackFormation then
+        damage + ((damage // 2) * 1) |> Damage
+    else
+        Damage damage
 
 
 -- Step 8

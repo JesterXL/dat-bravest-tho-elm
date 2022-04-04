@@ -3,27 +3,25 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
-import Battle exposing (getRandomNumberFromRange, terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+import Battle exposing (getRandomNumberFromRange, Formation(..), terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
 import Task
 
 type alias Model =
-    { count : Int
-    , damage : Int 
-    , initialSeed : Random.Seed }
+    { damage : Int 
+    , initialSeed : Random.Seed
+    , currentSeed : Random.Seed }
 
 
 initialModel : Random.Seed -> Model
 initialModel seed =
-    { count = 0
-    , damage = 0
-    , initialSeed = seed }
+    { damage = 0
+    , initialSeed = seed
+    , currentSeed = seed }
 
 
 type Msg
-    = Increment
-    | Decrement
-    | FireSpellAgainstSingleTarget
+    = FireSpellAgainstSingleTarget
     | FireSpellAgainstMultipleTargets
     | SwordPhysicalAttackSingleTarget
 
@@ -31,45 +29,37 @@ type Msg
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
-        Increment ->
-            ({ model | count = model.count + 1 }, Cmd.none)
-
-        Decrement ->
-            ({ model | count = model.count - 1 }, Cmd.none)
 
         FireSpellAgainstSingleTarget ->
             let
                 { power } = fireSpell
                 
-                damage = 
-                    getDamage model.initialSeed PlayerMagicalAttack power dirk terraAttacker lockeTarget
+                ( damage, newSeed ) = 
+                    getDamage model.initialSeed (NormalFormation False) PlayerMagicalAttack power dirk terraAttacker lockeTarget
             in
-            ( { model | damage = damage }, Cmd.none )
+            ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
         FireSpellAgainstMultipleTargets ->
             let
                 { power } = fireSpell
                 
-                damage = 
-                    getDamage model.initialSeed PlayerMagicalMultipleAttack power dirk terraAttacker lockeTarget
+                ( damage, newSeed ) = 
+                    getDamage model.initialSeed (NormalFormation False) PlayerMagicalMultipleAttack power dirk terraAttacker lockeTarget
             in
-            ( { model | damage = damage }, Cmd.none )
+            ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
         SwordPhysicalAttackSingleTarget ->
             let
-                damage = 
-                    getDamage model.initialSeed PlayerPhysicalAttack (SpellPower 0) dirk terraAttacker lockeTarget
+                ( damage, newSeed ) = 
+                    getDamage model.initialSeed (NormalFormation False) PlayerPhysicalAttack (SpellPower 0) dirk terraAttacker lockeTarget
             in
             
-            ( { model | damage = damage }, Cmd.none )
+            ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
 
 
 
 view : Model -> Html Msg
 view model =
     div []
-        [ button [ onClick Increment ] [ text "+1" ]
-        , div [] [ text <| String.fromInt model.count ]
-        , button [ onClick Decrement ] [ text "-1" ]
-        , div [][text ("Damage: " ++ (String.fromInt model.damage))]
+        [ div [][text ("Damage: " ++ (String.fromInt model.damage))]
         , button [onClick FireSpellAgainstSingleTarget ][text "Fire Spell Single Target"]
         , div [][]
         , button [onClick FireSpellAgainstMultipleTargets ][text "Fire Spell Multiple Targets"]
@@ -82,6 +72,7 @@ init : () -> (Model, Cmd Msg)
 init _ =
     ( initialModel (Random.initialSeed 42) , Cmd.none )
 
+subscriptions : a -> Sub msg
 subscriptions _ =
     Sub.none
 
