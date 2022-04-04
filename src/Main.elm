@@ -3,7 +3,7 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
-import Battle exposing (getRandomNumberFromRange, Formation(..), terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+import Battle exposing (getRandomNumberFromRange, Formation(..), Element(..), terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
 import Task
 
@@ -35,7 +35,7 @@ update msg model =
                 { power } = fireSpell
                 
                 ( damage, newSeed ) = 
-                    getDamage model.initialSeed (NormalFormation False) PlayerMagicalAttack power dirk terraAttacker lockeTarget
+                    getDamage model.currentSeed (NormalFormation False) PlayerMagicalAttack NotElement [] power dirk terraAttacker lockeTarget
             in
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
         FireSpellAgainstMultipleTargets ->
@@ -43,13 +43,13 @@ update msg model =
                 { power } = fireSpell
                 
                 ( damage, newSeed ) = 
-                    getDamage model.initialSeed (NormalFormation False) PlayerMagicalMultipleAttack power dirk terraAttacker lockeTarget
+                    getDamage model.currentSeed (NormalFormation False) PlayerMagicalMultipleAttack NotElement [] power dirk terraAttacker lockeTarget
             in
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
         SwordPhysicalAttackSingleTarget ->
             let
                 ( damage, newSeed ) = 
-                    getDamage model.initialSeed (NormalFormation False) PlayerPhysicalAttack (SpellPower 0) dirk terraAttacker lockeTarget
+                    getDamage model.currentSeed (NormalFormation False) PlayerPhysicalAttack NotElement [] (SpellPower 0) dirk terraAttacker lockeTarget
             in
             
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )

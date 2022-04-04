@@ -1,4 +1,4 @@
-module Battle exposing (getRandomNumberFromRange, Formation(..), getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+module Battle exposing (getRandomNumberFromRange, Formation(..), Element(..), getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
 import Task
@@ -21,9 +21,9 @@ type Target
 
 -- Step 1
 
-getDamage : Random.Seed -> Formation -> Attack -> SpellPower -> WeaponStats -> Attacker -> Target -> (Int, Random.Seed)
-getDamage seed formation attack spellPower weaponStats attacker target =
-    getDamageStep1A attack attacker spellPower (Damage 0)
+getDamage : Random.Seed -> Formation -> Attack -> Element -> List ElementAffected -> SpellPower -> WeaponStats -> Attacker -> Target -> (Int, Random.Seed)
+getDamage seed formation attack element elementsAffected spellPower weaponStats attacker target =
+    getDamageStep1AMaximumDamage attack attacker spellPower (Damage 0)
     |> getStep21Step1PhysicalAttackDamage attack attacker
     |> getStep21Step2Damage attack attacker
     |> getDamageStep3 attack
@@ -37,6 +37,8 @@ getDamage seed formation attack spellPower weaponStats attacker target =
     |> (\(damage, newSeed) -> (getStep6fTargetMorphModification attack target damage, newSeed))
     |> (\(damage, newSeed) -> (getStep6gCharacterOnCharacterOrHealingAttack attack attacker target damage, newSeed))
     |> (\(damage, newSeed) -> (getStep7Damage formation attack damage, newSeed))
+    |> (\(damage, newSeed) -> (getDamageStep8 target damage, newSeed))
+    |> (\(damage, newSeed) -> (getStep9Elements target element elementsAffected damage, newSeed))
     |> (\(damage, newSeed) -> case damage of
         Damage dam ->
             (dam, newSeed))
@@ -165,7 +167,8 @@ type alias ItemStats =
     , description : String }
 
 type Element
-    = Water
+    = NotElement
+    | Water
     | Fire
     | Lightning
     | Poison
@@ -173,6 +176,18 @@ type Element
     | Pearl
     | Wind
     | Earth
+
+
+type ElementEffect
+    = ElementHasBeenNullified
+    | TargetAbsorbsElement
+    | TargetIsImmuneToElement
+    | TargetIsResistantToElement
+    | TargetIsWeakToElement
+
+
+type alias ElementAffected =
+    { element : Element, effect : ElementEffect }
 
 type Monster
     = Abolisher
@@ -208,6 +223,7 @@ type alias PlayingMonster =
     { stats : MonsterStats
     , hasSafeStatus : HasSafeStatus
     , hasShellStatus : HasShellStatus
+    , hasPetrifyStatus : HasPetrifyStatus
     , rowPosition : RowPosition }
 
 type Gold = Gold Int
@@ -223,8 +239,13 @@ type alias PlayableCharacter =
     , hasShellStatus : HasShellStatus
     , hasMorphStatus : HasMorphStatus
     , hasBerserkStatus : HasBerserkStatus
+    , hasPetrifyStatus : HasPetrifyStatus
     , defending : Defending
-    , rowPosition : RowPosition }
+    , rowPosition : RowPosition
+    , absorbs : List Element
+    , noEffect : List Element
+    , weak : List Element
+    , resistant : List Element }
 
 terraStats : CharacterStats
 terraStats =
@@ -249,8 +270,13 @@ playableTerra =
     , hasShellStatus = HasShellStatus False
     , hasMorphStatus = HasMorphStatus False
     , hasBerserkStatus = HasBerserkStatus False 
+    , hasPetrifyStatus = HasPetrifyStatus False
     , defending = Defending False
-    , rowPosition = Front }
+    , rowPosition = Front
+    , absorbs = []
+    , noEffect = []
+    , weak = []
+    , resistant = [] }
 
 terraAttacker : Attacker
 terraAttacker =
@@ -279,8 +305,13 @@ playableLocke =
     , hasShellStatus = HasShellStatus False
     , hasMorphStatus = HasMorphStatus False
     , hasBerserkStatus = HasBerserkStatus False
+    , hasPetrifyStatus = HasPetrifyStatus False
     , defending = Defending False
-    , rowPosition = Front }
+    , rowPosition = Front
+    , absorbs = []
+    , noEffect = []
+    , weak = []
+    , resistant = [] }
 
 lockeTarget : Target
 lockeTarget =
@@ -304,8 +335,8 @@ getDamageStep1AMonsters attack (SpellPower spellPower) (MagicPower magicPower) (
     else
         Damage damage
 
-getDamageStep1A : Attack -> Attacker -> SpellPower -> Damage -> Damage
-getDamageStep1A attack attacker spellPower damage =
+getDamageStep1AMaximumDamage : Attack -> Attacker -> SpellPower -> Damage -> Damage
+getDamageStep1AMaximumDamage attack attacker spellPower damage =
     case attacker of
         CharacterAttacker playChar ->
             getDamageStep1ACharacters attack spellPower playChar.stats.magicPower playChar.stats.level damage
@@ -1114,9 +1145,22 @@ getStep7Damage formation attack (Damage damage) =
 
 type HasPetrifyStatus = HasPetrifyStatus Bool
 
-getDamageStep8 : HasPetrifyStatus -> Damage -> Damage
-getDamageStep8 (HasPetrifyStatus petrified) damage =
-    if petrified == True then
+getPetrifyStatusFromTarget : Target -> Bool
+getPetrifyStatusFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.hasPetrifyStatus of
+                HasPetrifyStatus hasIt ->
+                    hasIt
+        MonsterTarget playMon ->
+            case playMon.hasPetrifyStatus of
+                HasPetrifyStatus hasIt ->
+                    hasIt
+
+
+getDamageStep8 : Target -> Damage -> Damage
+getDamageStep8 target damage =
+    if (getPetrifyStatusFromTarget target) == True then
         Damage 0
 
     else
@@ -1126,51 +1170,81 @@ getDamageStep8 (HasPetrifyStatus petrified) damage =
 
 -- Step 9
 
-type ElementEffect
-    = ElementHasBeenNullified
-    | TargetAbsorbsElement
-    | TargetIsImmuneToElement
-    | TargetIsResistantToElement
-    | TargetIsWeakToElement
 
 -- Step 9a
 
-getStep9aElementNullified : ElementEffect -> Damage -> Damage
-getStep9aElementNullified elementEffect damage =
-    if elementEffect == ElementHasBeenNullified then
-        Damage 0
+getStep9aElementNullified : ElementEffect -> Damage -> Result (ElementEffect, Damage) Damage
+getStep9aElementNullified effect damage =
+    if effect == ElementHasBeenNullified then
+        Err (effect, Damage 0)
     else
-        damage
+        Ok damage
 
 -- NOTE: for now, just negativeing the damage invert to indicate healing
 -- best english evarrr
-getStep9bAborbsElement : ElementEffect -> Damage -> Damage
+getStep9bAborbsElement : ElementEffect -> Damage -> Result (ElementEffect, Damage) Damage
 getStep9bAborbsElement effect (Damage damage) =
     if effect == TargetAbsorbsElement then
-        damage * -1 |> Damage
+        Err (effect, damage * -1 |> Damage)
     else
-        Damage damage
+        Ok (Damage damage)
 
-getStep9cImmuneElement : ElementEffect -> Damage -> Damage
+getStep9cImmuneElement : ElementEffect -> Damage -> Result (ElementEffect, Damage) Damage
 getStep9cImmuneElement effect damage =
     if effect == TargetIsImmuneToElement then
-        Damage 0
+        Err (effect, Damage 0)
     else
-        damage
+        Ok damage
 
-getStep9dResistentElement : ElementEffect -> Damage -> Damage
+getStep9dResistentElement : ElementEffect -> Damage -> Result (ElementEffect, Damage) Damage
 getStep9dResistentElement effect (Damage damage) =
     if effect == TargetIsResistantToElement then
-        damage // 2 |> Damage
+        Err (effect, damage // 2 |> Damage)
     else
-        Damage damage
+        Ok (Damage damage)
 
-getStep9eWeakElement : ElementEffect -> Damage -> Damage
+getStep9eWeakElement : ElementEffect -> Damage -> Result (ElementEffect, Damage) Damage
 getStep9eWeakElement effect (Damage damage) =
     if effect == TargetIsWeakToElement then
-        damage * 2 |> Damage
+        Err (effect, damage * 2 |> Damage)
     else
-        Damage damage
+        Ok (Damage damage)
+
+elementEffectMatches : Element -> ElementEffect -> List ElementAffected -> Maybe ElementEffect
+elementEffectMatches element_ effect_ elementsAffected =
+    List.filter (\ { element, effect } -> element == element_) elementsAffected
+    |> List.filter (\ { effect } -> effect == effect_ )
+    |> List.head
+    |> (\elementAffectedItemMaybe ->
+            case elementAffectedItemMaybe of
+                Nothing ->
+                    Nothing
+                Just elementAffectedItem ->
+                    Just elementAffectedItem.effect
+        )
+
+getStep9Elements : Target -> Element -> List ElementAffected -> Damage -> Damage
+getStep9Elements target element elementsAffected damage =
+    case target of
+        CharacterTarget playChar ->
+            case elementEffectMatches element ElementHasBeenNullified elementsAffected of
+                Nothing ->
+                    damage
+                Just effect ->
+                    getStep9aElementNullified effect damage
+                    |> Result.andThen (getStep9bAborbsElement effect)
+                    |> Result.andThen (getStep9cImmuneElement effect)
+                    |> Result.andThen (getStep9dResistentElement effect)
+                    |> Result.andThen (getStep9eWeakElement effect)
+                    |> (\ result ->
+                        case result of
+                            Err (effectAffectingDamage, finalDamage) ->
+                                finalDamage
+                            Ok finalDamage ->
+                                finalDamage
+                    )
+        MonsterTarget playMon ->
+            damage
 
 
 -- -- Hit Determinism
