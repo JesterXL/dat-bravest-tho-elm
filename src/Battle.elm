@@ -21,9 +21,9 @@ type Target
 
 -- Step 1
 
-getDamage : Random.Seed -> Formation -> Attack -> Element -> List ElementAffected -> SpellPower -> WeaponStats -> Attacker -> Target -> (Int, Random.Seed)
-getDamage seed formation attack element elementsAffected spellPower weaponStats attacker target =
-    getDamageStep1AMaximumDamage attack attacker spellPower (Damage 0)
+getDamage : Random.Seed -> Formation -> Attack -> Element -> List ElementAffected -> WeaponStats -> Attacker -> Target -> (Int, Random.Seed)
+getDamage seed formation attack element elementsAffected weaponStats attacker target =
+    getDamageStep1AMaximumDamage attack attacker (Damage 0)
     |> getStep21Step1PhysicalAttackDamage attack attacker
     |> getStep21Step2Damage attack attacker
     |> getDamageStep3 attack
@@ -43,16 +43,30 @@ getDamage seed formation attack element elementsAffected spellPower weaponStats 
         Damage dam ->
             (dam, newSeed))
 
+getHit : Random.Seed -> Attack -> AttackMissesDeathProtectedTargets -> Attacker -> Target -> HitResult
+getHit seed attack attackMissesDeathProtectedTargets attacker target =
+    getHitStep1attackAgainstClearTarget attack target
+    |> Result.andThen (\_ -> getHitStep2DeathProtection target attackMissesDeathProtectedTargets)
+    |> Result.andThen (\_ -> magicalAttackSpellUnblockable attack)
+    |> (\ result ->
+        case result of
+            Err hitResult ->
+                hitResult
+            Ok _ ->
+                Miss
+    )
+
+
 type Attack
     = PlayerPhysicalAttack
     | PlayerPhysicalMultipleAttack
-    | PlayerMagicalAttack
-    | PlayerMagicalMultipleAttack
+    | PlayerMagicalAttack Spell
+    | PlayerMagicalMultipleAttack Spell
     | PlayerHealingAttack
     | MonsterPhysicalAttack
     | MonsterPhysicalMultipleAttack
-    | MonsterMagicalAttack
-    | MonsterMagicalMultipleAttack
+    | MonsterMagicalAttack Spell
+    | MonsterMagicalMultipleAttack Spell
     | Special SpecialAttack
 
 
@@ -224,6 +238,8 @@ type alias PlayingMonster =
     , hasSafeStatus : HasSafeStatus
     , hasShellStatus : HasShellStatus
     , hasPetrifyStatus : HasPetrifyStatus
+    , hasClearStatus : HasClearStatus
+    , protectedFromWound : ProtectedFromWound
     , rowPosition : RowPosition }
 
 type Gold = Gold Int
@@ -240,6 +256,8 @@ type alias PlayableCharacter =
     , hasMorphStatus : HasMorphStatus
     , hasBerserkStatus : HasBerserkStatus
     , hasPetrifyStatus : HasPetrifyStatus
+    , hasClearStatus : HasClearStatus
+    , protectedFromWound : ProtectedFromWound
     , defending : Defending
     , rowPosition : RowPosition
     , absorbs : List Element
@@ -271,6 +289,8 @@ playableTerra =
     , hasMorphStatus = HasMorphStatus False
     , hasBerserkStatus = HasBerserkStatus False 
     , hasPetrifyStatus = HasPetrifyStatus False
+    , hasClearStatus = HasClearStatus False
+    , protectedFromWound = ProtectedFromWound False
     , defending = Defending False
     , rowPosition = Front
     , absorbs = []
@@ -306,6 +326,8 @@ playableLocke =
     , hasMorphStatus = HasMorphStatus False
     , hasBerserkStatus = HasBerserkStatus False
     , hasPetrifyStatus = HasPetrifyStatus False
+    , hasClearStatus = HasClearStatus False
+    , protectedFromWound = ProtectedFromWound False
     , defending = Defending False
     , rowPosition = Front
     , absorbs = []
@@ -320,28 +342,48 @@ lockeTarget =
 
 -- 2.1 - Step 1 magical attacks made by characters
 
-getDamageStep1ACharacters : Attack -> SpellPower -> MagicPower -> Level -> Damage -> Damage
-getDamageStep1ACharacters attack (SpellPower spellPower) (MagicPower magicPower) (Level level) (Damage damage) =
-    if isMagicalAttack attack then
-        Damage (spellPower * 4 + (level * magicPower * spellPower // 32) + damage)
-    else
-        Damage damage
+getSpellFromMagicalAttack : Attack -> Maybe Spell
+getSpellFromMagicalAttack attack =
+    case attack of
+        PlayerMagicalAttack spell ->
+            Just spell
+        PlayerMagicalMultipleAttack spell ->
+            Just spell
+        MonsterMagicalAttack spell ->
+            Just spell
+        MonsterMagicalMultipleAttack spell ->
+            Just spell
+        _ ->
+            Nothing
+
+getSpellPower : SpellPower -> Int
+getSpellPower (SpellPower spellPower) =
+    spellPower
+
+getDamageStep1ACharacters : Attack -> MagicPower -> Level -> Damage -> Damage
+getDamageStep1ACharacters attack (MagicPower magicPower) (Level level) (Damage damage) =
+    case getSpellFromMagicalAttack attack of
+        Just spell ->
+            Damage ((getSpellPower spell.power) * 4 + (level * magicPower * (getSpellPower spell.power) // 32) + damage)
+        Nothing ->
+            Damage damage
 
 -- 2.1 - Step 1 magical attacks made by monsters
-getDamageStep1AMonsters : Attack -> SpellPower -> MagicPower -> Level -> Damage -> Damage
-getDamageStep1AMonsters attack (SpellPower spellPower) (MagicPower magicPower) (Level level) (Damage damage) =
-    if isMagicalAttack attack then
-        Damage (spellPower * 4 + (level * magicPower * 3 // 2) * spellPower // 32)
-    else
-        Damage damage
+getDamageStep1AMonsters : Attack -> MagicPower -> Level -> Damage -> Damage
+getDamageStep1AMonsters attack (MagicPower magicPower) (Level level) (Damage damage) =
+    case getSpellFromMagicalAttack attack of
+        Just spell ->
+            Damage ((getSpellPower spell.power) * 4 + (level * magicPower * 3 // 2) * (getSpellPower spell.power) // 32)
+        Nothing ->
+            Damage damage
 
-getDamageStep1AMaximumDamage : Attack -> Attacker -> SpellPower -> Damage -> Damage
-getDamageStep1AMaximumDamage attack attacker spellPower damage =
+getDamageStep1AMaximumDamage : Attack -> Attacker -> Damage -> Damage
+getDamageStep1AMaximumDamage attack attacker damage =
     case attacker of
         CharacterAttacker playChar ->
-            getDamageStep1ACharacters attack spellPower playChar.stats.magicPower playChar.stats.level damage
+            getDamageStep1ACharacters attack playChar.stats.magicPower playChar.stats.level damage
         MonsterAttacker playMon ->
-            getDamageStep1AMonsters attack spellPower playMon.stats.magicPower playMon.stats.level damage
+            getDamageStep1AMonsters attack playMon.stats.magicPower playMon.stats.level damage
 
 
 
@@ -1247,7 +1289,7 @@ getStep9Elements target element elementsAffected damage =
             damage
 
 
--- -- Hit Determinism
+-- Hit Determinism
 
 
 -- -- getRandomHitOrMissvalue : Seed -> Int
@@ -1292,13 +1334,6 @@ getStep9Elements target element elementsAffected damage =
 
 -- type RemoveImageStatus = RemoveImageStatus Bool 
 
--- type AttackResult
---     = Hit
---     | HitAndRemoveImageStatus
---     | Miss 
---     | MissAndRemoveImageStatus
---     | Unknown
-
 
 isPhysicalAttack : Attack -> Bool
 isPhysicalAttack attack =
@@ -1331,16 +1366,16 @@ isMonsterPhysicalAttack attack =
 isMagicalAttack : Attack -> Bool
 isMagicalAttack attack =
     case attack of
-        MonsterMagicalAttack ->
+        MonsterMagicalAttack _ ->
             True
 
-        MonsterMagicalMultipleAttack ->
+        MonsterMagicalMultipleAttack _ ->
             True
 
-        PlayerMagicalAttack ->
+        PlayerMagicalAttack _ ->
             True
 
-        PlayerMagicalMultipleAttack ->
+        PlayerMagicalMultipleAttack _ ->
             True
 
         _ ->
@@ -1349,9 +1384,9 @@ isMagicalAttack attack =
 isMagicalMultipleTargetAttack : Attack -> Bool
 isMagicalMultipleTargetAttack attack =
     case attack of
-        PlayerMagicalMultipleAttack ->
+        PlayerMagicalMultipleAttack _ ->
             True
-        MonsterMagicalMultipleAttack ->
+        MonsterMagicalMultipleAttack _ ->
             True
         _ ->
             False
@@ -1361,45 +1396,95 @@ isMagicalMultipleTargetAttack attack =
 -- isSpecialAttack attack =
 --     isPhysicalAttack attack == False && isMagicalAttack attack == False
 
--- -- 2.2 Step 1
+-- 2.2 - Step 1a
 
--- type HasClearStatus = HasClearStatus Bool 
+type HitResult
+    = Hit
+    | HitAndRemoveImageStatus
+    | Miss 
+    | MissAndRemoveImageStatus
 
--- attackAgainstClearTarget : Attack -> HasClearStatus -> AttackResult
--- attackAgainstClearTarget attack (HasClearStatus clear) =
---     if isPhysicalAttack attack && clear == True then
---         Miss
+type HasClearStatus = HasClearStatus Bool 
 
---     else if isMagicalAttack attack && clear == True then
---         Hit
+getClearStatusFromTarget : Target -> Bool
+getClearStatusFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.hasClearStatus of
+                HasClearStatus hasIt ->
+                    hasIt
+        MonsterTarget playMon ->
+            case playMon.hasClearStatus of
+                HasClearStatus hasIt ->
+                    hasIt
 
---     else
---         Unknown
 
--- -- 2.2 Step 2
 
--- type ProtectedFromWound = ProtectedFromWound Bool
--- type AttackMissesDeathProtectedTargets = AttackMissesDeathProtectedTargets Bool
+getHitStep1attackAgainstClearTarget : Attack -> Target -> Result HitResult ()
+getHitStep1attackAgainstClearTarget attack target =
+    if isPhysicalAttack attack && (getClearStatusFromTarget target) == True then
+        Err Miss
 
--- anyAttackWoundProtectMissDeath : ProtectedFromWound -> AttackMissesDeathProtectedTargets -> AttackResult
--- anyAttackWoundProtectMissDeath (ProtectedFromWound protectedFromWound) (AttackMissesDeathProtectedTargets attackMissesDeathProtectedTargets) =
---     if protectedFromWound && attackMissesDeathProtectedTargets then
---         Miss
+    else if isMagicalAttack attack && (getClearStatusFromTarget target) == True then
+        Err Hit
 
---     else
---         Unknown
+    else
+        Ok ()
 
--- -- 2.2 Step 3
+-- 2.2 Step 2
 
--- type SpellUnblockable = SpellUnblockable Bool
+type ProtectedFromWound = ProtectedFromWound Bool
+type AttackMissesDeathProtectedTargets = AttackMissesDeathProtectedTargets Bool
 
--- magicalAttackSpellUnblockable : Attack -> SpellUnblockable -> AttackResult
--- magicalAttackSpellUnblockable attack (SpellUnblockable spellUnblockable) =
---     if isMagicalAttack attack && spellUnblockable then
---         Hit
+getTargetProtectedFromWound : Target -> Bool
+getTargetProtectedFromWound target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.protectedFromWound of
+                ProtectedFromWound hasIt ->
+                    hasIt
+        MonsterTarget playMon ->
+            case playMon.protectedFromWound of
+                ProtectedFromWound hasIt ->
+                    hasIt
 
---     else
---         Unknown
+getHitStep2DeathProtection : Target -> AttackMissesDeathProtectedTargets -> Result HitResult ()
+getHitStep2DeathProtection target (AttackMissesDeathProtectedTargets attackMissesDeathProtectedTargets) =
+    if (getTargetProtectedFromWound target) && attackMissesDeathProtectedTargets then
+        Err Miss
+
+    else
+        Ok ()
+
+-- 2.2 - Step 3
+
+getIsUnblockable : Unblockable -> Bool
+getIsUnblockable (Unblockable unblockable) =
+    unblockable
+
+-- TODO: handle Special as some of those are unblockable, but unsure
+-- if spell, so this type may not matter later when we handle specials.
+getSpellUnblockableFromAttack : Attack -> Bool
+getSpellUnblockableFromAttack attack =
+    case attack of
+        PlayerMagicalAttack { unblockable } ->
+            getIsUnblockable unblockable
+        PlayerMagicalMultipleAttack { unblockable } ->
+            getIsUnblockable unblockable
+        MonsterMagicalAttack { unblockable } ->
+            getIsUnblockable unblockable
+        MonsterMagicalMultipleAttack { unblockable } ->
+            getIsUnblockable unblockable
+        _ ->
+            False
+
+magicalAttackSpellUnblockable : Attack -> Result HitResult ()
+magicalAttackSpellUnblockable attack =
+    if isMagicalAttack attack && (getSpellUnblockableFromAttack attack) then
+        Err Hit
+
+    else
+        Ok ()
 
 -- -- 2.2 Step 4a
 
