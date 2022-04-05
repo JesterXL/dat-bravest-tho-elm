@@ -1,11 +1,6 @@
 module Battle exposing (getRandomNumberFromRange, Formation(..), Element(..), getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
-import Task
-
-perfectHitRate : Int
-perfectHitRate =
-    255
 
 getRandomNumberFromRange : Random.Seed -> Int -> Int -> (Int, Random.Seed)
 getRandomNumberFromRange seed start end =
@@ -21,8 +16,8 @@ type Target
 
 -- Step 1
 
-getDamage : Random.Seed -> Formation -> Attack -> Element -> List ElementAffected -> WeaponStats -> Attacker -> Target -> (Int, Random.Seed)
-getDamage seed formation attack element elementsAffected weaponStats attacker target =
+getDamage : Random.Seed -> Formation -> Attack -> Element -> List ElementAffected -> Attacker -> Target -> (Int, Random.Seed)
+getDamage seed formation attack element elementsAffected attacker target =
     getDamageStep1AMaximumDamage attack attacker (Damage 0)
     |> getStep21Step1PhysicalAttackDamage attack attacker
     |> getStep21Step2Damage attack attacker
@@ -43,11 +38,16 @@ getDamage seed formation attack element elementsAffected weaponStats attacker ta
         Damage dam ->
             (dam, newSeed))
 
-getHit : Random.Seed -> Attack -> AttackMissesDeathProtectedTargets -> Attacker -> Target -> HitResult
-getHit seed attack attackMissesDeathProtectedTargets attacker target =
+
+
+getHit : Random.Seed -> Attack -> Formation -> AttackMissesDeathProtectedTargets -> Attacker -> Target -> HitResult
+getHit seed attack formation attackMissesDeathProtectedTargets attacker target =
     getHitStep1attackAgainstClearTarget attack target
     |> Result.andThen (\_ -> getHitStep2DeathProtection target attackMissesDeathProtectedTargets)
-    |> Result.andThen (\_ -> magicalAttackSpellUnblockable attack)
+    |> Result.andThen (\_ -> getHitStep3UnblockableMagicalAttack attack)
+    |> Result.andThen (\_ -> getHitStep4aAttackUnmissableAgainstTarget attack target)
+    |> Result.andThen (\_ -> getHitStep4bPhysicalAttackBack attack formation)
+    |> Result.andThen (\_ -> getStep4cIsPerfectHitRate (getHitRateFromAttack attack))
     |> (\ result ->
         case result of
             Err hitResult ->
@@ -58,19 +58,19 @@ getHit seed attack attackMissesDeathProtectedTargets attacker target =
 
 
 type Attack
-    = PlayerPhysicalAttack
-    | PlayerPhysicalMultipleAttack
-    | PlayerMagicalAttack Spell
-    | PlayerMagicalMultipleAttack Spell
+    = PlayerPhysicalAttack WeaponStats
+    | PlayerPhysicalMultipleAttack WeaponStats
+    | PlayerMagicalAttack SpellStats
+    | PlayerMagicalMultipleAttack SpellStats
     | PlayerHealingAttack
-    | MonsterPhysicalAttack
-    | MonsterPhysicalMultipleAttack
-    | MonsterMagicalAttack Spell
-    | MonsterMagicalMultipleAttack Spell
-    | Special SpecialAttack
+    | MonsterPhysicalAttack MonsterStats
+    | MonsterPhysicalMultipleAttack MonsterStats
+    | MonsterMagicalAttack SpellStats
+    | MonsterMagicalMultipleAttack SpellStats
+    | Special SpecialMonsterAttackStats
 
 
-type SpecialAttack
+type SpecialMonsterAttack
     = BREAK
     | DOOM
     | DEMI
@@ -84,6 +84,30 @@ type SpecialAttack
     | SNARE
     | X_FER
     | GRAV_BOMB
+
+getHitRateFromAttack : Attack -> HitRate
+getHitRateFromAttack attack =
+    case attack of
+        PlayerPhysicalAttack weaponStats ->
+            weaponStats.hitRate
+        PlayerPhysicalMultipleAttack weaponStats ->
+            weaponStats.hitRate
+        PlayerMagicalAttack spellStats ->
+            spellStats.hitRate
+        PlayerMagicalMultipleAttack spellStats ->
+            spellStats.hitRate
+        PlayerHealingAttack ->
+            HitRate 255 -- TODO/FIXME: what even is this... Healing Rod?
+        MonsterPhysicalAttack monsterStats ->
+            monsterStats.hitRate
+        MonsterPhysicalMultipleAttack monsterStats ->
+            monsterStats.hitRate
+        MonsterMagicalAttack spellStats ->
+            spellStats.hitRate
+        MonsterMagicalMultipleAttack spellStats ->
+            spellStats.hitRate
+        Special specialAttack ->
+            specialAttack.hitRate
 
 type alias Preemptive = Bool
 
@@ -102,13 +126,101 @@ type IgnoresDefense = IgnoresDefense Bool
 type Unblockable = Unblockable Bool
 type HitRate = HitRate Int  
 
-type alias Spell =
-    { magicType : MagicType
+type Spell
+    = Bio
+    | Bolt
+    | Bolt2
+    | Bolt3
+    | Break
+    | Demi
+    | Doom
+    | Drain
+    | Fire
+    | Fire2
+    | Fire3
+    | Flare
+    | Ice
+    | Ice2 
+    | Ice3 
+    | Merton
+    | Meteor
+    | Pearl
+    | Poison
+    | Quake 
+    | Quartr
+    | Ultima
+    | WWind
+    | XZone
+    | Bserk
+    | Dispel
+    | Float
+    | Haste
+    | Haste2
+    | Imp
+    | Muddle
+    | Mute
+    | Osmose
+    | Quick
+    | Rasp
+    | Rflect
+    | Safe
+    | Scan
+    | Shell
+    | Sleep
+    | Slow
+    | Slow2
+    | Stop
+    | Vanish
+    | Warp
+    | Antdot
+    | Cure
+    | Cure2
+    | Cure3
+    | Life
+    | Life2
+    | Life3
+    | Regen
+    | Remedy
+
+type Reflectable = Reflectable Bool
+type AbsorbedByRunic = AbsorbedByRunic Bool 
+
+type AttackTarget
+    = OneAlly
+    | AllAllies
+    | OneOpponent
+    | AllOpponents
+
+type alias SpellStats =
+    { spell : Spell
+    , magicType : MagicType
+    , magicPoints : MagicPoints
     , power : SpellPower
+    , hitRate : HitRate
+    , reflectable : Reflectable
+    , absorbedByRunic : AbsorbedByRunic
+    , element : Element
     , physical : Physical
     , ignoresDefense : IgnoresDefense
     , unblockable : Unblockable
-    , hitRate : HitRate }
+    , targets : List AttackTarget
+    , description : String } -- TODO: figure out effect; is this applied or too vague?
+
+type alias SpecialMonsterAttackStats =
+    { specialMonsterAttack : SpecialMonsterAttack
+    , magicType : MagicType
+    , magicPoints : MagicPoints
+    , power : SpellPower
+    , hitRate : HitRate
+    , reflectable : Reflectable
+    , absorbedByRunic : AbsorbedByRunic
+    , element : Element
+    , physical : Physical
+    , ignoresDefense : IgnoresDefense
+    , unblockable : Unblockable
+    , targets : List AttackTarget
+    , description : String } -- TODO: figure out effect; is this applied or too vague?
+
 
 type MagicType
     = BlackMagic
@@ -123,14 +235,21 @@ type MagicType
     | Desparation
     | Miscellaneous
 
-fireSpell : Spell
+fireSpell : SpellStats
 fireSpell =
-    { magicType = BlackMagic
+    { spell = Fire
+    , magicType = BlackMagic
+    , magicPoints = MagicPoints 4
     , power = SpellPower 21
+    , hitRate = HitRate 150
+    , reflectable = Reflectable True
+    , absorbedByRunic = AbsorbedByRunic True
+    , element = FireElement
     , physical = Physical False
     , ignoresDefense = IgnoresDefense False
     , unblockable = Unblockable False
-    , hitRate = HitRate 150 }
+    , targets = [ OneAlly, AllAllies, OneOpponent, AllOpponents ]
+    , description = "Fire-elemental attack" }
 
 type BattlePower = BattlePower Int
 type Evade = Evade Int
@@ -182,14 +301,14 @@ type alias ItemStats =
 
 type Element
     = NotElement
-    | Water
-    | Fire
-    | Lightning
-    | Poison
-    | Ice
-    | Pearl
-    | Wind
-    | Earth
+    | WaterElement
+    | FireElement
+    | LightningElement
+    | PoisonElement
+    | IceElement
+    | PearlElement
+    | WindElement
+    | EarthElement
 
 
 type ElementEffect
@@ -240,6 +359,9 @@ type alias PlayingMonster =
     , hasPetrifyStatus : HasPetrifyStatus
     , hasClearStatus : HasClearStatus
     , protectedFromWound : ProtectedFromWound
+    , hasSleepStatus : HasSleepStatus
+    , hasFreezeStatus : HasFreezeStatus
+    , hasStopStatus : HasStopStatus
     , rowPosition : RowPosition }
 
 type Gold = Gold Int
@@ -258,6 +380,9 @@ type alias PlayableCharacter =
     , hasPetrifyStatus : HasPetrifyStatus
     , hasClearStatus : HasClearStatus
     , protectedFromWound : ProtectedFromWound
+    , hasSleepStatus : HasSleepStatus
+    , hasFreezeStatus : HasFreezeStatus
+    , hasStopStatus : HasStopStatus
     , defending : Defending
     , rowPosition : RowPosition
     , absorbs : List Element
@@ -290,6 +415,9 @@ playableTerra =
     , hasBerserkStatus = HasBerserkStatus False 
     , hasPetrifyStatus = HasPetrifyStatus False
     , hasClearStatus = HasClearStatus False
+    , hasSleepStatus = HasSleepStatus False
+    , hasFreezeStatus = HasFreezeStatus False
+    , hasStopStatus = HasStopStatus False
     , protectedFromWound = ProtectedFromWound False
     , defending = Defending False
     , rowPosition = Front
@@ -327,6 +455,9 @@ playableLocke =
     , hasBerserkStatus = HasBerserkStatus False
     , hasPetrifyStatus = HasPetrifyStatus False
     , hasClearStatus = HasClearStatus False
+    , hasSleepStatus = HasSleepStatus False
+    , hasFreezeStatus = HasFreezeStatus False
+    , hasStopStatus = HasStopStatus False
     , protectedFromWound = ProtectedFromWound False
     , defending = Defending False
     , rowPosition = Front
@@ -342,7 +473,7 @@ lockeTarget =
 
 -- 2.1 - Step 1 magical attacks made by characters
 
-getSpellFromMagicalAttack : Attack -> Maybe Spell
+getSpellFromMagicalAttack : Attack -> Maybe SpellStats
 getSpellFromMagicalAttack attack =
     case attack of
         PlayerMagicalAttack spell ->
@@ -1338,16 +1469,16 @@ getStep9Elements target element elementsAffected damage =
 isPhysicalAttack : Attack -> Bool
 isPhysicalAttack attack =
     case attack of
-        PlayerPhysicalAttack ->
+        PlayerPhysicalAttack _ ->
             True
 
-        PlayerPhysicalMultipleAttack ->
+        PlayerPhysicalMultipleAttack _ ->
             True
 
-        MonsterPhysicalAttack ->
+        MonsterPhysicalAttack _ ->
             True
 
-        MonsterPhysicalMultipleAttack ->
+        MonsterPhysicalMultipleAttack _ ->
             True
 
         _ ->
@@ -1356,9 +1487,9 @@ isPhysicalAttack attack =
 isMonsterPhysicalAttack : Attack -> Bool
 isMonsterPhysicalAttack attack =
     case attack of
-        MonsterPhysicalAttack ->
+        MonsterPhysicalAttack _ ->
             True
-        MonsterPhysicalMultipleAttack ->
+        MonsterPhysicalMultipleAttack _ ->
             True
         _ ->
             False
@@ -1478,53 +1609,93 @@ getSpellUnblockableFromAttack attack =
         _ ->
             False
 
-magicalAttackSpellUnblockable : Attack -> Result HitResult ()
-magicalAttackSpellUnblockable attack =
+getHitStep3UnblockableMagicalAttack : Attack -> Result HitResult ()
+getHitStep3UnblockableMagicalAttack attack =
     if isMagicalAttack attack && (getSpellUnblockableFromAttack attack) then
         Err Hit
 
     else
         Ok ()
 
--- -- 2.2 Step 4a
+-- 2.2 - Step 4a
 
--- -- No Special Attacks --
--- -- Skip this if attack can be blocked by Stamina
+-- No Special Attacks --
+-- Skip this if attack can be blocked by Stamina
 
--- type HasSleepStatus = HasSleepStatus Bool
--- type HasFreezeStatus = HasFreezeStatus Bool
--- type HasStopStatus = HasStopStatus Bool   
+type HasSleepStatus = HasSleepStatus Bool
+type HasFreezeStatus = HasFreezeStatus Bool
+type HasStopStatus = HasStopStatus Bool   
 
--- attackUnmissableAgainstTarget : HasSleepStatus -> HasPetrifyStatus -> HasFreezeStatus -> HasStopStatus -> AttackResult
--- attackUnmissableAgainstTarget (HasSleepStatus targetHasSleepStatus) (HasPetrifyStatus targetHasPetrifyStatus) (HasFreezeStatus targetHasFreezeStatus) (HasStopStatus targetHasStopStatus) =
---     if targetHasSleepStatus || targetHasPetrifyStatus || targetHasFreezeStatus || targetHasStopStatus then
---         Hit
+getHasSleepStatusFromTarget : Target -> Bool
+getHasSleepStatusFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.hasSleepStatus of
+                HasSleepStatus hasIt ->
+                    hasIt
+        MonsterTarget playMon ->
+            case playMon.hasSleepStatus of
+                HasSleepStatus hasIt ->
+                    hasIt
 
---     else
---         Unknown
+getHasFreezeStatusFromTarget : Target -> Bool
+getHasFreezeStatusFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.hasFreezeStatus of
+                HasFreezeStatus hasIt ->
+                    hasIt
+        MonsterTarget playMon ->
+            case playMon.hasFreezeStatus of
+                HasFreezeStatus hasIt ->
+                    hasIt
 
--- -- 2.2 Step 4b
+getHasStopStatusFromTarget : Target -> Bool
+getHasStopStatusFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            case playChar.hasStopStatus of
+                HasStopStatus hasIt ->
+                    hasIt
+        MonsterTarget playMon ->
+            case playMon.hasStopStatus of
+                HasStopStatus hasIt ->
+                    hasIt
 
--- type BackOfTarget = BackOfTarget Bool
+getHitStep4aAttackUnmissableAgainstTarget : Attack -> Target -> Result HitResult ()
+getHitStep4aAttackUnmissableAgainstTarget attack target =
+    if isPhysicalAttack attack then
+        if (getHasSleepStatusFromTarget target) || (getPetrifyStatusFromTarget target) || (getHasFreezeStatusFromTarget target) || (getHasStopStatusFromTarget target) then
+            Err Hit
 
--- physicalAttackBack : Attack -> BackOfTarget -> AttackResult
--- physicalAttackBack attack (BackOfTarget backOfTarget) =
---     if isPhysicalAttack attack && backOfTarget then
---         Hit
+        else
+            Ok ()
+    else
+        Ok ()
 
---     else
---         Unknown
+-- 2.2 - Step 4b
 
--- -- 2.2 Step 4c
--- type HitRate = HitRate Int
+getHitStep4bPhysicalAttackBack : Attack -> Formation -> Result HitResult ()
+getHitStep4bPhysicalAttackBack attack formation =
+    if isPhysicalAttack attack && formation == BackFormation then
+        Err Hit
 
--- isPerfectHitRate : HitRate -> AttackResult
--- isPerfectHitRate (HitRate hitRate) =
---     if hitRate == perfectHitRate then
---         Hit
+    else
+        Ok ()
 
---     else
---         Unknown
+-- 2.2 - Step 4c
+
+perfectHitRate : HitRate
+perfectHitRate =
+    HitRate 255
+
+getStep4cIsPerfectHitRate : HitRate -> Result HitResult ()
+getStep4cIsPerfectHitRate hitRate =
+    if hitRate == perfectHitRate then
+        Err Hit
+
+    else
+        Ok ()
 
 -- -- 2.2 Step 4d
 -- type TargetHasImageStatus = TargetHasImageStatus Bool

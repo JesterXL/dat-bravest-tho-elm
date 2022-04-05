@@ -33,21 +33,20 @@ update msg model =
         FireSpellAgainstSingleTarget ->
             let
                 ( damage, newSeed ) = 
-                    getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] dirk terraAttacker lockeTarget
+                    getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] terraAttacker lockeTarget
             in
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
         FireSpellAgainstMultipleTargets ->
             let
-                { power } = fireSpell
                 
                 ( damage, newSeed ) = 
-                    getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] dirk terraAttacker lockeTarget
+                    getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] terraAttacker lockeTarget
             in
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
         SwordPhysicalAttackSingleTarget ->
             let
                 ( damage, newSeed ) = 
-                    getDamage model.currentSeed (NormalFormation False) PlayerPhysicalAttack NotElement [] dirk terraAttacker lockeTarget
+                    getDamage model.currentSeed (NormalFormation False) (PlayerPhysicalAttack dirk) NotElement [] terraAttacker lockeTarget
             in
             
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
