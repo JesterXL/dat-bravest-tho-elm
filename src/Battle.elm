@@ -40,21 +40,46 @@ getDamage seed formation attack element elementsAffected attacker target =
 
 
 
-getHit : Random.Seed -> Attack -> Formation -> AttackMissesDeathProtectedTargets -> Attacker -> Target -> HitResult
+getHit : Random.Seed -> Attack -> Formation -> AttackMissesDeathProtectedTargets -> Attacker -> Target -> (HitResult, Random.Seed)
 getHit seed attack formation attackMissesDeathProtectedTargets attacker target =
-    getHitStep1attackAgainstClearTarget attack target
-    |> Result.andThen (\_ -> getHitStep2DeathProtection target attackMissesDeathProtectedTargets)
-    |> Result.andThen (\_ -> getHitStep3UnblockableMagicalAttack attack)
-    |> Result.andThen (\_ -> getHitStep4aAttackUnmissableAgainstTarget attack target)
-    |> Result.andThen (\_ -> getHitStep4bPhysicalAttackBack attack formation)
-    |> Result.andThen (\_ -> getStep4cIsPerfectHitRate (getHitRateFromAttack attack))
+    getHitStep1attackAgainstClearTarget seed attack target
+    |> Result.andThen (\ _ -> getHitStep2DeathProtection seed target attackMissesDeathProtectedTargets)
+    |> Result.andThen (\ _ -> getHitStep3UnblockableMagicalAttack seed attack)
+    |> Result.andThen (\ _ ->
+        if isSpecialAttack attack == False then
+            getHitStep4 seed attack formation target
+        else
+            getHitStep5 seed attack attacker target
+    )
     |> (\ result ->
         case result of
-            Err hitResult ->
-                hitResult
-            Ok _ ->
-                Miss
+            Err (hitResult, newSeed) ->
+                (hitResult, newSeed)
+            Ok datSeed ->
+                (Miss, datSeed)
     )
+
+getHitStep4 : Random.Seed -> Attack -> Formation -> Target -> Result (HitResult, Random.Seed) Random.Seed
+getHitStep4 seed attack formation target =
+    getHitStep4aAttackUnmissableAgainstTarget seed attack target
+    |> Result.andThen (\ _ -> getHitStep4bPhysicalAttackBack seed attack formation)
+    |> Result.andThen (\ _ -> getStep4cIsPerfectHitRate seed (getHitRateFromAttack attack))
+    |> Result.andThen (\ _ -> getStep4dPhysicalAttackAgainstImageStatus seed attack target)
+    |> Result.andThen (\ _ -> getStep4eHit seed attack target )
+
+getHitStep5 : Random.Seed -> Attack -> Attacker -> Target -> Result (HitResult, Random.Seed) Random.Seed
+getHitStep5 seed attack attacker target =
+    getStep5aChanceToHit seed attack (getHitRateFromAttack attack) (getMBlockFromTarget target)
+    |> (\ (hitResultStep5a, newSeed) -> getStep5bStaminaHitOrMiss newSeed attack (getStaminaFromTarget target) hitResultStep5a)
+
+getStaminaFromTarget : Target -> Stamina
+getStaminaFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            playChar.stats.stamina
+        MonsterTarget playMon ->
+            playMon.stats.stamina
+
 
 
 type Attack
@@ -341,6 +366,7 @@ type alias MonsterStats =
     , evade : Evade
     , magicPower : MagicPower
     , speed : Speed 
+    , stamina : Stamina
     , magicDefense : MagicDefense
     , mblock : MBlock
     , stolenItems : List Item
@@ -362,6 +388,7 @@ type alias PlayingMonster =
     , hasSleepStatus : HasSleepStatus
     , hasFreezeStatus : HasFreezeStatus
     , hasStopStatus : HasStopStatus
+    , hasImageStatus : HasImageStatus
     , rowPosition : RowPosition }
 
 type Gold = Gold Int
@@ -383,6 +410,7 @@ type alias PlayableCharacter =
     , hasSleepStatus : HasSleepStatus
     , hasFreezeStatus : HasFreezeStatus
     , hasStopStatus : HasStopStatus
+    , hasImageStatus : HasImageStatus
     , defending : Defending
     , rowPosition : RowPosition
     , absorbs : List Element
@@ -418,6 +446,7 @@ playableTerra =
     , hasSleepStatus = HasSleepStatus False
     , hasFreezeStatus = HasFreezeStatus False
     , hasStopStatus = HasStopStatus False
+    , hasImageStatus = HasImageStatus False
     , protectedFromWound = ProtectedFromWound False
     , defending = Defending False
     , rowPosition = Front
@@ -458,6 +487,7 @@ playableLocke =
     , hasSleepStatus = HasSleepStatus False
     , hasFreezeStatus = HasFreezeStatus False
     , hasStopStatus = HasStopStatus False
+    , hasImageStatus = HasImageStatus False
     , protectedFromWound = ProtectedFromWound False
     , defending = Defending False
     , rowPosition = Front
@@ -1445,14 +1475,7 @@ getStep9Elements target element elementsAffected damage =
 -- -- getRandomRemoveImageStatus =
 -- --     { start = 1, end = 4, result = Waiting }
 
--- getRemoveImageStatus : RandomRemoveImageStatus -> Bool
--- getRemoveImageStatus { result } =
---     -- let
---     --     (num, seed) = getRandomNumberFromRange 1 4 seed)
---     --     removed = num == 4
---     -- in
---     -- ( removed, Seed seed)
---     result == 4
+
 
 
 -- -- getMonsterStamina : Seed -> Int
@@ -1523,16 +1546,20 @@ isMagicalMultipleTargetAttack attack =
             False
 
 
--- isSpecialAttack : Attack -> Bool
--- isSpecialAttack attack =
---     isPhysicalAttack attack == False && isMagicalAttack attack == False
+isSpecialAttack : Attack -> Bool
+isSpecialAttack attack =
+    case attack of
+        Special _ ->
+            True
+        _ ->
+            False
 
 -- 2.2 - Step 1a
 
 type HitResult
     = Hit
     | HitAndRemoveImageStatus
-    | Miss 
+    | Miss
     | MissAndRemoveImageStatus
 
 type HasClearStatus = HasClearStatus Bool 
@@ -1551,16 +1578,16 @@ getClearStatusFromTarget target =
 
 
 
-getHitStep1attackAgainstClearTarget : Attack -> Target -> Result HitResult ()
-getHitStep1attackAgainstClearTarget attack target =
+getHitStep1attackAgainstClearTarget : Random.Seed -> Attack -> Target -> Result ( HitResult, Random.Seed ) Random.Seed
+getHitStep1attackAgainstClearTarget seed attack target =
     if isPhysicalAttack attack && (getClearStatusFromTarget target) == True then
-        Err Miss
+        Err (Miss, seed)
 
     else if isMagicalAttack attack && (getClearStatusFromTarget target) == True then
-        Err Hit
+        Err (Hit, seed)
 
     else
-        Ok ()
+        Ok seed
 
 -- 2.2 Step 2
 
@@ -1579,13 +1606,13 @@ getTargetProtectedFromWound target =
                 ProtectedFromWound hasIt ->
                     hasIt
 
-getHitStep2DeathProtection : Target -> AttackMissesDeathProtectedTargets -> Result HitResult ()
-getHitStep2DeathProtection target (AttackMissesDeathProtectedTargets attackMissesDeathProtectedTargets) =
+getHitStep2DeathProtection : Random.Seed -> Target -> AttackMissesDeathProtectedTargets -> Result ( HitResult, Random.Seed ) Random.Seed
+getHitStep2DeathProtection seed target (AttackMissesDeathProtectedTargets attackMissesDeathProtectedTargets) =
     if (getTargetProtectedFromWound target) && attackMissesDeathProtectedTargets then
-        Err Miss
+        Err (Miss, seed)
 
     else
-        Ok ()
+        Ok seed
 
 -- 2.2 - Step 3
 
@@ -1609,13 +1636,13 @@ getSpellUnblockableFromAttack attack =
         _ ->
             False
 
-getHitStep3UnblockableMagicalAttack : Attack -> Result HitResult ()
-getHitStep3UnblockableMagicalAttack attack =
+getHitStep3UnblockableMagicalAttack : Random.Seed -> Attack -> Result ( HitResult, Random.Seed ) Random.Seed
+getHitStep3UnblockableMagicalAttack seed attack =
     if isMagicalAttack attack && (getSpellUnblockableFromAttack attack) then
-        Err Hit
+        Err (Hit, seed)
 
     else
-        Ok ()
+        Ok seed
 
 -- 2.2 - Step 4a
 
@@ -1662,26 +1689,26 @@ getHasStopStatusFromTarget target =
                 HasStopStatus hasIt ->
                     hasIt
 
-getHitStep4aAttackUnmissableAgainstTarget : Attack -> Target -> Result HitResult ()
-getHitStep4aAttackUnmissableAgainstTarget attack target =
+getHitStep4aAttackUnmissableAgainstTarget : Random.Seed -> Attack -> Target -> Result ( HitResult, Random.Seed ) Random.Seed
+getHitStep4aAttackUnmissableAgainstTarget seed attack target =
     if isPhysicalAttack attack then
         if (getHasSleepStatusFromTarget target) || (getPetrifyStatusFromTarget target) || (getHasFreezeStatusFromTarget target) || (getHasStopStatusFromTarget target) then
-            Err Hit
+            Err (Hit, seed)
 
         else
-            Ok ()
+            Ok seed
     else
-        Ok ()
+        Ok seed
 
 -- 2.2 - Step 4b
 
-getHitStep4bPhysicalAttackBack : Attack -> Formation -> Result HitResult ()
-getHitStep4bPhysicalAttackBack attack formation =
+getHitStep4bPhysicalAttackBack : Random.Seed -> Attack -> Formation -> Result ( HitResult, Random.Seed ) Random.Seed
+getHitStep4bPhysicalAttackBack seed attack formation =
     if isPhysicalAttack attack && formation == BackFormation then
-        Err Hit
+        Err (Hit, seed)
 
     else
-        Ok ()
+        Ok seed
 
 -- 2.2 - Step 4c
 
@@ -1689,89 +1716,130 @@ perfectHitRate : HitRate
 perfectHitRate =
     HitRate 255
 
-getStep4cIsPerfectHitRate : HitRate -> Result HitResult ()
-getStep4cIsPerfectHitRate hitRate =
+getStep4cIsPerfectHitRate : Random.Seed -> HitRate -> Result ( HitResult, Random.Seed ) Random.Seed
+getStep4cIsPerfectHitRate seed hitRate =
     if hitRate == perfectHitRate then
-        Err Hit
+        Err (Hit, seed)
 
     else
-        Ok ()
+        Ok seed
 
--- -- 2.2 Step 4d
--- type TargetHasImageStatus = TargetHasImageStatus Bool
+-- 2.2 - Step 4d
+type HasImageStatus = HasImageStatus Bool
 
--- physicalAttackAgainstImageStatus : Attack -> TargetHasImageStatus -> RandomRemoveImageStatus -> AttackResult
--- physicalAttackAgainstImageStatus attack (TargetHasImageStatus targetHasImageStatus) randomResult =
---     if isPhysicalAttack attack && targetHasImageStatus then
---         if getRemoveImageStatus randomResult == True then
---             MissAndRemoveImageStatus
---         else
---             Miss 
+getImageStatus : HasImageStatus -> Bool
+getImageStatus (HasImageStatus status) =
+    status
 
---     else
---         Unknown
+getTargetHasImageStatus : Target -> Bool
+getTargetHasImageStatus target =
+    case target of
+        CharacterTarget playChar ->
+            getImageStatus playChar.hasImageStatus
+        MonsterTarget playMon ->
+            getImageStatus playMon.hasImageStatus
 
--- -- 2.2 Step 4e
+getRemoveImageStatus : Random.Seed -> (Bool, Random.Seed)
+getRemoveImageStatus seed =
+    getRandomNumberFromRange seed 1 4
+    |> (\(int, newSeed) -> (int == 4, newSeed))
 
--- type MBlock = MBlock Int
--- type BlockValue = BlockValue Int
+getStep4dPhysicalAttackAgainstImageStatus : Random.Seed -> Attack -> Target -> Result (HitResult, Random.Seed) Random.Seed
+getStep4dPhysicalAttackAgainstImageStatus seed attack target =
+    if isPhysicalAttack attack && (getTargetHasImageStatus target) then
+        case getRemoveImageStatus seed of
+            (False, newSeed) ->
+                Err (Miss, newSeed)
+            (True, newSeed) ->
+                Err (MissAndRemoveImageStatus, newSeed)
+                
+    else
+        Ok seed
 
--- getStep4eBaseBlockValueFromBlock : MBlock -> Int
--- getStep4eBaseBlockValueFromBlock (MBlock block) =
---     (255 - block * 2) + 1
+-- 2.2 - Step 4e
 
--- getStep4eBlockValueClamp : BlockValue -> BlockValue
--- getStep4eBlockValueClamp (BlockValue value) =
---     if value > 255 then
---         BlockValue 255
---     else if value < 1 then
---         BlockValue 1
---     else
---         BlockValue value
+getStep4eBaseBlockValueFromBlock : MBlock -> Int
+getStep4eBaseBlockValueFromBlock (MBlock block) =
+    (255 - block * 2) + 1
 
--- -- getStep4eHit : HitRate -> BlockValue -> Seed -> AttackResult
--- -- getStep4eHit (HitRate rate) (BlockValue value) seed =
--- --     if ((rate * value) / 256) > (getRandomNumberFromRange 0 99 seed) then
--- --         Hit
--- --     else
--- --         Miss
+getStep4eBlockValueClamp : Int -> Int
+getStep4eBlockValueClamp value =
+    if value > 255 then
+        255
+    else if value < 1 then
+        1
+    else
+        value
 
--- -- Special Attacks --
+getMBlockFromTarget : Target -> MBlock
+getMBlockFromTarget target =
+    case target of
+        CharacterTarget playChar ->
+            playChar.stats.mblock
+        MonsterTarget playMon ->
+            playMon.stats.mblock
 
--- shouldUseStep5HitCheck : Attack -> Bool
--- shouldUseStep5HitCheck attack =
---     case attack of
---         Special _ -> True
---         _ -> False
+getStep4eHit : Random.Seed -> Attack -> Target -> Result (HitResult, Random.Seed) Random.Seed
+getStep4eHit seed attack target =
+    let
+        (randomInt, newSeed) = getRandomNumberFromRange seed 0 99
+        blockValue =
+            getMBlockFromTarget target
+            |> getStep4eBaseBlockValueFromBlock
+            |> getStep4eBlockValueClamp
+        (HitRate hitRateValue) =
+            getHitRateFromAttack attack
 
--- -- getStep5aChanceToHit : Seed -> HitRate -> MagicBlock -> BlockValue
--- -- getStep5aChanceToHit (HitRate rate) (MagicBlock value) =
--- --     let
--- --         blockValue =
--- --             (255 - value * 2) + 1
--- --         clampedBlockValue =
--- --             clamp 1 255 blockValue
--- --     in
--- --     if ((rate * clampedBlockValue) / 256) > getRandomNumberFromRange 0 99 seed then
--- --         Hit
--- --     else
--- --         Miss
+    in
+    if ( (hitRateValue * blockValue) // 256) > randomInt then
+        Err (Hit, newSeed)
+    else
+        Err (Miss, newSeed)
+
+-- Step 5 - Special Attacks --
+
+getStep5aChanceToHit : Random.Seed -> Attack -> HitRate -> MBlock -> (HitResult, Random.Seed)
+getStep5aChanceToHit seed attack (HitRate rate) (MBlock value) =
+    let
+        blockValue =
+            (255 - value * 2) + 1
+        clampedBlockValue =
+            clamp 1 255 blockValue
+
+        (randomInt, newSeed) = 
+            getRandomNumberFromRange seed 0 99
+    in
+        if ((rate * clampedBlockValue) // 256) > randomInt then
+            (Hit, newSeed)
+        else
+            (Miss, newSeed)
     
+hitResultIsSomeTypeOfHit : HitResult -> Bool
+hitResultIsSomeTypeOfHit hitResult =
+    case hitResult of
+        Hit ->
+            True
+        HitAndRemoveImageStatus ->
+            True
+        _ ->
+            False
 
--- -- getStep5bStaminaHitOrMiss : Attack -> Stamina -> Seed -> AttackResult -> AttackResult
--- -- getStep5bStaminaHitOrMiss attack (Stamina targetStamina) seed hitInStep5a =
--- --     if isSpecialAttack attack then
--- --         if targetStamina >= getRandomNumberFromRange 0 127 seed then
--- --             Miss
+getStep5bStaminaHitOrMiss : Random.Seed -> Attack -> Stamina -> HitResult -> Result (HitResult, Random.Seed) Random.Seed
+getStep5bStaminaHitOrMiss seed attack (Stamina targetStamina) hitInStep5a =
+    let
+        (randomInt, newSeed) = 
+            getRandomNumberFromRange seed 0 127
+    in
+    
+    if isSpecialAttack attack then
+        if targetStamina >= randomInt then
+            Err (Miss, newSeed)
 
--- --         else if hitInStep5a == Hit || hitInStep5a == HitAndRemoveImageStatus then
--- --             hitInStep5a
+        else if hitResultIsSomeTypeOfHit hitInStep5a == True then
+            Err (hitInStep5a, newSeed)
 
--- --         else
--- --             Miss
+        else
+            Err (Miss, newSeed)
 
--- --     else
--- --         hitInStep5a
-
--- -- hitDetermination : Attack -> AttackResult
--- -- hitDetermination attack =
+    else
+        Ok newSeed
