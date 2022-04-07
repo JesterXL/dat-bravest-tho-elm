@@ -101,14 +101,13 @@ update msg model =
                                                     }
                                                     loadedText) }, Cmd.none )
 
-h : number
-h =
-    480
-
-
 w : number
 w =
-    720
+    256 * 2
+h : number
+h =
+    224 * 2
+
 
 view : Model -> Html Msg
 view model =
@@ -128,7 +127,7 @@ view model =
                 , height = h
                 , textures = textures }
                 []
-                (shapes [ fill Color.black ] [ rect ( 0, 0 ) w h ]
+                (shapes [ fill Color.black] [ rect ( 0, 0 ) w h ]
                     :: (case model.sprites of
                             Loading ->
                                 [ renderText "Loading sprite sheet" ]
@@ -137,7 +136,7 @@ view model =
                                 let
                                     _ = Debug.log "drawing image" sprite
                                 in
-                                [ texture [] ( 30, 30 ) sprite ]
+                                [ texture [transform [scale 2.0 2.0] ] ( 30, 30 ) sprite ]
 
                             Failure ->
                                 [ renderText "Failed to load sprite sheet!" ]
