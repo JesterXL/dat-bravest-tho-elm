@@ -1,4 +1,4 @@
-module Battle exposing (getRandomNumberFromRange, Formation(..), Element(..), getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
+module Battle exposing (getRandomNumberFromRange, AttackMissesDeathProtectedTargets(..), Formation(..), Element(..), getHit, HitResult(..), hitResultToString, getDamage, terraAttacker, lockeTarget, terraStats, playableTerra, lockeStats, playableLocke, fireSpell, dirk, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 
 import Random
 
@@ -65,7 +65,7 @@ getHitStep4 seed attack formation target =
     |> Result.andThen (\ _ -> getHitStep4bPhysicalAttackBack seed attack formation)
     |> Result.andThen (\ _ -> getStep4cIsPerfectHitRate seed (getHitRateFromAttack attack))
     |> Result.andThen (\ _ -> getStep4dPhysicalAttackAgainstImageStatus seed attack target)
-    |> Result.andThen (\ _ -> getStep4eHit seed attack target )
+    |> Result.andThen (\ newSeed -> getStep4eHit newSeed attack target )
 
 getHitStep5 : Random.Seed -> Attack -> Attacker -> Target -> Result (HitResult, Random.Seed) Random.Seed
 getHitStep5 seed attack attacker target =
@@ -1562,6 +1562,14 @@ type HitResult
     | Miss
     | MissAndRemoveImageStatus
 
+hitResultToString : HitResult -> String
+hitResultToString hitResult =
+    case hitResult of
+        Hit -> "hit"
+        HitAndRemoveImageStatus -> "hit and remove image status"
+        Miss -> "miss"
+        MissAndRemoveImageStatus -> "miss and remove image status"
+
 type HasClearStatus = HasClearStatus Bool 
 
 getClearStatusFromTarget : Target -> Bool
@@ -1783,6 +1791,7 @@ getStep4eHit : Random.Seed -> Attack -> Target -> Result (HitResult, Random.Seed
 getStep4eHit seed attack target =
     let
         (randomInt, newSeed) = getRandomNumberFromRange seed 0 99
+        _ = Debug.log "randomInt hit" randomInt
         blockValue =
             getMBlockFromTarget target
             |> getStep4eBaseBlockValueFromBlock
