@@ -1,31 +1,35 @@
 module Main exposing (main)
 
 import Browser
-import Html exposing (Html, button, div, text)
+import Html exposing (Html, button, div, img)
 import Html.Events exposing (onClick)
-import Html.Attributes exposing (style)
-import Browser.Events exposing (onAnimationFrameDelta)
+import Html.Attributes exposing (src)
 import Battle exposing (getRandomNumberFromRange, AttackMissesDeathProtectedTargets(..), Formation(..), Element(..),getHit, HitResult(..), hitResultToString, terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
-import Canvas exposing (..)
-import Canvas.Settings exposing (..)
-import Canvas.Settings.Advanced exposing (..)
-import Canvas.Settings.Text exposing (..)
-import Canvas.Texture as Texture exposing (Texture)
-import Color exposing (Color)
+import Animator
+import Animator.Inline
+import Time
 
 type alias Model =
     { damage : Int 
     , initialSeed : Random.Seed
     , currentSeed : Random.Seed
     , hitResult : HitResult 
-    , frame : Float
-    , sprites : Load Texture }
+    , paused : Bool
+    , faded : Animator.Timeline Bool }
 
-type Load a
-    = Loading
-    | Success a
-    | Failure
+animator : Animator.Animator Model
+animator =
+    Animator.animator
+        |> Animator.watching
+            -- we tell the animator how
+            -- to get the checked timeline using .checked
+            .faded
+            -- and we tell the animator how
+            -- to update that timeline as well
+            (\newFaded model ->
+                { model | faded = newFaded }
+            )
 
 initialModel : Random.Seed -> Model
 initialModel seed =
@@ -33,8 +37,8 @@ initialModel seed =
     , initialSeed = seed
     , currentSeed = seed
     , hitResult = Miss 
-    , frame = 0
-    , sprites = Loading }
+    , faded = Animator.init False
+    , paused = False }
 
 
 type Msg
@@ -42,15 +46,9 @@ type Msg
     | FireSpellAgainstMultipleTargets
     | SwordPhysicalAttackSingleTarget
     | AttemptToHit
-    | AnimationFrame Float
-    | TextureLoaded (Maybe Texture)
-
-spriteSheetCellSize =
-    24
-
-spriteSheetCellSpace =
-    16
-
+    | TogglePause
+    | Tick Time.Posix
+    | Fade Bool
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -81,33 +79,15 @@ update msg model =
                     getHit model.currentSeed (PlayerPhysicalAttack dirk) (NormalFormation False) (AttackMissesDeathProtectedTargets False) terraAttacker lockeTarget
             in
             ( { model | hitResult = hitResult, currentSeed = newSeed }, Cmd.none )
-        AnimationFrame delta ->
-            ( { model | frame = model.frame + delta / 10 }
-            , Cmd.none
-            )
-        TextureLoaded textureMaybe ->
-            let
-                _ = Debug.log "textureMaybe" textureMaybe
-            in
-            case textureMaybe of
-                Nothing ->
-                    ({ model | sprites = Failure} , Cmd.none)
-                Just loadedText ->
-                    ( { model | sprites = Success (Texture.sprite
-                                                    { x = 0
-                                                    , y = 0
-                                                    , width = 16
-                                                    , height = 24 
-                                                    }
-                                                    loadedText) }, Cmd.none )
-
-w : number
-w =
-    256 * 2
-h : number
-h =
-    224 * 2
-
+        
+        TogglePause ->
+            ( { model | paused = not model.paused }, Cmd.none)
+        Tick newTime ->
+            ( model |> Animator.update newTime animator, Cmd.none )
+        Fade newFaded ->
+            ( { model | faded =
+                            model.faded
+                                |> Animator.go Animator.slowly newFaded}, Cmd.none )
 
 view : Model -> Html Msg
 view model =
@@ -121,52 +101,35 @@ view model =
         , div [][]
         , div [][Html.text ("Hit Result: " ++ (hitResultToString model.hitResult))]
         , button [onClick AttemptToHit][Html.text "Attempt Hit"]
+        , div [][]
+        , button [onClick (Fade False)][Html.text "Fade False"]
+        , div [][]
+        , button [onClick (Fade True)][Html.text "Fade True"]
         , div [][
-            Canvas.toHtmlWith
-                { width = w
-                , height = h
-                , textures = textures }
-                []
-                (shapes [ fill Color.black] [ rect ( 0, 0 ) w h ]
-                    :: (case model.sprites of
-                            Loading ->
-                                [ renderText "Loading sprite sheet" ]
-
-                            Success sprite ->
-                                let
-                                    _ = Debug.log "drawing image" sprite
-                                in
-                                [ texture [transform [scale 2.0 2.0] ] ( 30, 30 ) sprite ]
-
-                            Failure ->
-                                [ renderText "Failed to load sprite sheet!" ]
-                    )
+            
+            img [src "src/Sabin.png"
+            , Animator.Inline.xy
+                model.faded
+                (\ faded -> if faded == False then
+                    { x = Animator.at 0, y = Animator.at 0 }
+                else
+                    { x = Animator.at 120, y = Animator.at 0 }
                 )
-
+                            
+            ][]
+                        
         ]
         ]
-
-textures : List (Texture.Source Msg)
-textures =
-    [ Texture.loadFromImageUrl "src/Sabin.png" TextureLoaded]
-
-renderText : String -> Renderable
-renderText txt =
-    Canvas.text
-        [ font { size = 48, family = "sans-serif" }
-        , align Center
-        , maxWidth w
-        ]
-        ( w / 2, h / 2 - 24 )
-        txt
 
 
 init : () -> (Model, Cmd Msg)
 init _ =
     ( initialModel (Random.initialSeed 42) , Cmd.none )
 
-subscriptions _ =
-    onAnimationFrameDelta AnimationFrame
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    animator
+    |> Animator.toSubscription Tick model
 
 main : Program () Model Msg
 main =
