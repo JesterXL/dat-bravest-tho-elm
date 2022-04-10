@@ -3,7 +3,7 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, button, div, img)
 import Html.Events exposing (onClick)
-import Html.Attributes exposing (src)
+import Html.Attributes exposing (src, style, class)
 import Battle exposing (getRandomNumberFromRange, AttackMissesDeathProtectedTargets(..), Formation(..), Element(..),getHit, HitResult(..), hitResultToString, terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
 import Random
 import Animator
@@ -94,8 +94,9 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ div [][Html.text ("Damage: " ++ (String.fromInt model.damage))]
+    div [ ]
+        [ stylesheet
+        ,  div [][Html.text ("Damage: " ++ (String.fromInt model.damage))]
         , button [onClick FireSpellAgainstSingleTarget ][Html.text "Fire Spell Single Target"]
         , div [][]
         , button [onClick FireSpellAgainstMultipleTargets ][Html.text "Fire Spell Multiple Targets"]
@@ -128,7 +129,7 @@ view model =
 
 viewSabinMove : Model -> Html Msg
 viewSabinMove model =
-    Animator.Css.node "img"
+    Animator.Css.node "div"
         model.faded
         [ Animator.Css.transform <|
             \ state ->
@@ -143,10 +144,40 @@ viewSabinMove model =
                             , y = 0 }
             
         ]
-        [ src "src/Sabin.png"
+        [ style "position" "absolute"
+        , style "top" "0px"
+        , style "top" "0px"
+        , style "width" "16px"
+        , style "height" "24px"
+        , style "background-image" "url('src/Sabin.png')"
+        , style "background-repeat" "no-repeat"
+        -- , style "transform-origin" "30% 50%"
+        , style "background-position" "-20px -62px"
+        , class "pixel-art"
         ]
         [ ]
 
+
+stylesheet : Html msg
+stylesheet =
+    Html.node "style"
+        []
+        [ Html.text """@import url('https://fonts.googleapis.com/css?family=Roboto&display=swap');
+body, html {
+    margin: 0;
+    padding:0;
+    border:0;
+    display:block;
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.pixel-art {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+""" ]
 
 init : () -> (Model, Cmd Msg)
 init _ =
