@@ -9,6 +9,9 @@ import Random
 import Animator
 import Animator.Inline
 import Time
+import Animator.Css
+import Color
+import Html.Lazy
 
 type alias Model =
     { damage : Int 
@@ -21,7 +24,7 @@ type alias Model =
 animator : Animator.Animator Model
 animator =
     Animator.animator
-        |> Animator.watching
+        |> Animator.Css.watching
             -- we tell the animator how
             -- to get the checked timeline using .checked
             .faded
@@ -107,19 +110,42 @@ view model =
         , button [onClick (Fade True)][Html.text "Fade True"]
         , div [][
             
-            img [src "src/Sabin.png"
-            , Animator.Inline.xy
-                model.faded
-                (\ faded -> if faded == False then
-                    { x = Animator.at 0, y = Animator.at 0 }
-                else
-                    { x = Animator.at 120, y = Animator.at 0 }
-                )
+            -- img [src "src/Sabin.png"
+            -- , Animator.Inline.xy
+            --     model.faded
+            --     (\ faded -> if faded == False then
+            --         { x = Animator.at 0, y = Animator.at 0 }
+            --     else
+            --         { x = Animator.at 120, y = Animator.at 0 }
+            --     )
                             
-            ][]
+            -- ][]
+
+            viewSabinMove model
                         
         ]
         ]
+
+viewSabinMove : Model -> Html Msg
+viewSabinMove model =
+    Animator.Css.node "img"
+        model.faded
+        [ Animator.Css.transform <|
+            \ state ->
+                case state of
+                    False ->
+                        Animator.Css.xy
+                            { x = 0
+                            , y = 0 }
+                    True ->
+                        Animator.Css.xy
+                            { x = 120
+                            , y = 0 }
+            
+        ]
+        [ src "src/Sabin.png"
+        ]
+        [ ]
 
 
 init : () -> (Model, Cmd Msg)
