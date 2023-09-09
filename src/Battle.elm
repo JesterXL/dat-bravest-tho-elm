@@ -1,5 +1,6 @@
-module Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableTerra, terraAttacker, terraStats)
+module Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 
+import Dict exposing (keys)
 import Random
 
 
@@ -633,6 +634,47 @@ lockeTarget =
     CharacterTarget playableLocke
 
 
+sabinStats : CharacterStats
+sabinStats =
+    { character = Sabin
+    , level = Level 1
+    , vigor = Vigor 47
+    , speed = Speed 37
+    , stamina = Stamina 39
+    , magicPower = MagicPower 28
+    , battlePower = BattlePower 26
+    , defense = Defense 53
+    , magicDefense = MagicDefense 21
+    , mblock = MBlock 4
+    , evade = Evade 15
+    }
+
+
+playableSabin : PlayableCharacter
+playableSabin =
+    { stats = sabinStats
+    , equippedRelics = { leftHand = Nothing, rightHand = Nothing }
+    , equippedWeapons = { leftHand = Nothing, rightHand = Just (EquippedWeapon metalKnuckle) }
+    , hasSafeStatus = HasSafeStatus False
+    , hasShellStatus = HasShellStatus False
+    , hasMorphStatus = HasMorphStatus False
+    , hasBerserkStatus = HasBerserkStatus False
+    , hasPetrifyStatus = HasPetrifyStatus False
+    , hasClearStatus = HasClearStatus False
+    , hasSleepStatus = HasSleepStatus False
+    , hasFreezeStatus = HasFreezeStatus False
+    , hasStopStatus = HasStopStatus False
+    , hasImageStatus = HasImageStatus False
+    , protectedFromWound = ProtectedFromWound False
+    , defending = Defending False
+    , rowPosition = Front
+    , absorbs = []
+    , noEffect = []
+    , weak = []
+    , resistant = []
+    }
+
+
 
 -- 2.1 - Step 1 magical attacks made by characters
 
@@ -841,6 +883,16 @@ mithrilKnife =
     , hitRate = HitRate 180
     , price = Price 300
     , equippableCharacters = [ Terra, Locke, Shadow, Edgar, Celes, Strago, Relm, Setzer, Mog, Gogo ]
+    }
+
+
+metalKnuckle : WeaponStats
+metalKnuckle =
+    { weapon = MetalKnuckle
+    , power = BattlePower 55
+    , hitRate = HitRate 200
+    , price = Price 250
+    , equippableCharacters = [ Sabin ]
     }
 
 

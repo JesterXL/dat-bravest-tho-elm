@@ -3,7 +3,7 @@ module Main exposing (main)
 import Animator
 import Animator.Css
 import Animator.Inline
-import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableTerra, terraAttacker, terraStats)
+import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
 import Canvas.Texture exposing (sprite)
@@ -25,11 +25,13 @@ type alias Model =
     , faded : Animator.Timeline Bool
     , encounter : Maybe Encounter
     , time : Int
+    , battleTimer : BattlerTimer
     }
 
 
 type alias Encounter =
     { enemies : List SpriteMonster
+    , characters : List SpriteCharacter
     , formation : Formation
     }
 
@@ -42,9 +44,19 @@ type alias SpriteMonster =
     }
 
 
+type alias SpriteCharacter =
+    { playableCharacter : PlayableCharacter
+    , image : String
+    , width : Int
+    , height : Int
+    , atbGauge : ATBGauge
+    }
+
+
 basicEncounter : Encounter
 basicEncounter =
     { enemies = [ rhobite, rhobite, rhobite ]
+    , characters = [ sabin ]
     , formation = NormalFormation False
     }
 
@@ -80,6 +92,16 @@ rhobite =
     }
 
 
+sabin : SpriteCharacter
+sabin =
+    { playableCharacter = playableSabin
+    , image = "src/Sabin.png"
+    , width = 16
+    , height = 24
+    , atbGauge = ATBGaugeCharging 0
+    }
+
+
 animator : Animator.Animator Model
 animator =
     Animator.animator
@@ -104,7 +126,19 @@ initialModel seed =
     , paused = False
     , encounter = Just basicEncounter
     , time = 0
+    , battleTimer = { millisecondsPassed = 0, counter = 0 }
     }
+
+
+type alias BattlerTimer =
+    { millisecondsPassed : Int
+    , counter : Int
+    }
+
+
+type ATBGauge
+    = ATBGaugeCharging Int
+    | ATBGaugeReady
 
 
 type Msg
@@ -164,13 +198,59 @@ update msg model =
 
         Frame timePassed ->
             let
-                _ =
-                    Debug.log "timePassed" timePassed
+                timePassedInt =
+                    round timePassed
 
-                newTime =
-                    Time.millisToPosix (round timePassed)
+                currentBattleTimer =
+                    model.battleTimer
+
+                updatedBattleTimerMilliseconds =
+                    { currentBattleTimer
+                        | millisecondsPassed =
+                            model.battleTimer.millisecondsPassed + timePassedInt
+                    }
+
+                updatedBattleTimerTimer =
+                    { updatedBattleTimerMilliseconds
+                        | counter = updatedBattleTimerMilliseconds.millisecondsPassed // 30
+                        , millisecondsPassed = remainderBy 30 updatedBattleTimerMilliseconds.millisecondsPassed
+                    }
+
+                updatedEncounter =
+                    case model.encounter of
+                        Nothing ->
+                            Nothing
+
+                        Just encounter ->
+                            let
+                                updatedEncounterLoop =
+                                    List.repeat updatedBattleTimerTimer.counter 0
+                                        |> List.foldl
+                                            (\_ encounterAccum ->
+                                                { encounterAccum
+                                                    | characters = updateATBGauges encounter.characters
+                                                }
+                                            )
+                                            encounter
+
+                                _ =
+                                    Debug.log "updatedEncounterLoop" updatedEncounterLoop.characters
+                            in
+                            Just updatedEncounterLoop
+
+                -- updateATBGauges
+                -- _ =
+                --     Debug.log "updatedBattleTimerTimer" updatedBattleTimerTimer
+                -- (96 * (Speed + 20)) / 16
+                -- 65536
+                updatedModel =
+                    { model
+                        | battleTimer = updatedBattleTimerTimer
+                        , time = model.time + timePassedInt
+                        , encounter = updatedEncounter
+                    }
             in
-            ( model |> Animator.update newTime animator, Cmd.none )
+            ( updatedModel |> Animator.update (Time.millisToPosix timePassedInt) animator, Cmd.none )
 
         Fade newFaded ->
             ( { model
@@ -182,11 +262,56 @@ update msg model =
             )
 
 
+
+-- This is wrong... I need to keep track of
+-- the whole timer internally, then reset it each
+-- time I get a count
+-- incrementBattleTimer : Int -> ( Int, Int )
+-- incrementBattleTimer totalGameTime =
+--     let
+--         counts =
+--             totalGameTime // 30
+--         remainderTime =
+--             remainderBy 30 totalGameTime
+--     in
+--     ( counts, remainderTime )
+-- (96 * (Speed + 20)) / 16
+
+
+updateATBGauges : List SpriteCharacter -> List SpriteCharacter
+updateATBGauges spriteCharacters =
+    List.map
+        (\spriteCharacter ->
+            case spriteCharacter.atbGauge of
+                ATBGaugeCharging currentCharge ->
+                    if currentCharge < 65536 then
+                        case spriteCharacter.playableCharacter.stats.speed of
+                            Speed speed ->
+                                let
+                                    updatedCharge =
+                                        currentCharge + (96 * (speed + 20)) // 16
+                                in
+                                if updatedCharge >= 65536 then
+                                    { spriteCharacter | atbGauge = ATBGaugeReady }
+
+                                else
+                                    { spriteCharacter | atbGauge = ATBGaugeCharging updatedCharge }
+
+                    else
+                        spriteCharacter
+
+                ATBGaugeReady ->
+                    spriteCharacter
+        )
+        spriteCharacters
+
+
 view : Model -> Html Msg
 view model =
     div []
         [ stylesheet
         , viewEcounter model
+        , pauseButton model.paused
         ]
 
 
@@ -312,12 +437,12 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    -- if model.paused == False then
-    --     animator
-    --         |> Animator.toSubscription Tick model
-    -- else
-    --     Sub.none
-    Sub.batch [ onAnimationFrameDelta Frame ]
+    if model.paused == False then
+        -- animator |> Animator.toSubscription Tick model
+        Sub.batch [ onAnimationFrameDelta Frame ]
+
+    else
+        Sub.none
 
 
 main : Program () Model Msg
