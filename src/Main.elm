@@ -7,7 +7,7 @@ import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), Battl
 import Browser
 import Canvas.Texture exposing (sprite)
 import Color
-import Html exposing (Html, button, div, img)
+import Html exposing (Html, button, div, img, text)
 import Html.Attributes exposing (class, src, style)
 import Html.Events exposing (onClick)
 import Html.Lazy
@@ -35,8 +35,8 @@ type alias Encounter =
 type alias SpriteMonster =
     { stats : MonsterStats
     , image : String
-    , width : Float
-    , height : Float
+    , width : Int
+    , height : Int
     }
 
 
@@ -100,7 +100,7 @@ initialModel seed =
     , hitResult = Miss
     , faded = Animator.init False
     , paused = False
-    , encounter = Nothing
+    , encounter = Just basicEncounter
     }
 
 
@@ -165,34 +165,58 @@ view : Model -> Html Msg
 view model =
     div []
         [ stylesheet
-        , div [] [ Html.text ("Damage: " ++ String.fromInt model.damage) ]
-        , button [ onClick FireSpellAgainstSingleTarget ] [ Html.text "Fire Spell Single Target" ]
-        , div [] []
-        , button [ onClick FireSpellAgainstMultipleTargets ] [ Html.text "Fire Spell Multiple Targets" ]
-        , div [] []
-        , button [ onClick SwordPhysicalAttackSingleTarget ] [ Html.text "Sword Physical Attack Single Target" ]
-        , div [] []
-        , div [] [ Html.text ("Hit Result: " ++ hitResultToString model.hitResult) ]
-        , button [ onClick AttemptToHit ] [ Html.text "Attempt Hit" ]
-        , div [] []
-        , button [ onClick (Fade False) ] [ Html.text "Fade False" ]
-        , div [] []
-        , button [ onClick (Fade True) ] [ Html.text "Fade True" ]
-        , div []
-            [ -- img [src "src/Sabin.png"
-              -- , Animator.Inline.xy
-              --     model.faded
-              --     (\ faded -> if faded == False then
-              --         { x = Animator.at 0, y = Animator.at 0 }
-              --     else
-              --         { x = Animator.at 120, y = Animator.at 0 }
-              --     )
-              -- ][]
-              viewSabinMove model
-            ]
-        , div [] []
-        , pauseButton model.paused
+        , viewEcounter model
         ]
+
+
+viewEcounter : Model -> Html Msg
+viewEcounter model =
+    case model.encounter of
+        Nothing ->
+            div [] [ text "Waiting for Encounter to be created." ]
+
+        Just encounter ->
+            div []
+                [ viewEncounterEnemies encounter
+                , viewSabinMove model
+                ]
+
+
+viewEncounterEnemies : Encounter -> Html Msg
+viewEncounterEnemies encounter =
+    div []
+        (List.indexedMap
+            viewEnemy
+            encounter.enemies
+        )
+
+
+viewEnemy : Int -> SpriteMonster -> Html Msg
+viewEnemy index enemy =
+    Animator.Css.node "div"
+        (Animator.init True)
+        [ Animator.Css.transform <|
+            \state ->
+                Animator.Css.xy
+                    { x = 0
+                    , y = (toFloat index + 1) * 32
+                    }
+        ]
+        [ style "position" "absolute"
+        , style "top" "0px"
+        , style "top" "0px"
+
+        -- , style "width" (String.fromInt enemy.width ++ "px")
+        -- , style "height" (String.fromInt enemy.height ++ "px")
+        , style "width" "32px"
+        , style "height" "32px"
+        , style "background-image" ("url('" ++ enemy.image ++ "')")
+        , style "background-repeat" "no-repeat"
+
+        -- , style "background-position" "-20px -62px"
+        , class "pixel-art"
+        ]
+        []
 
 
 viewSabinMove : Model -> Html Msg
@@ -204,8 +228,8 @@ viewSabinMove model =
                 case state of
                     False ->
                         Animator.Css.xy
-                            { x = 0
-                            , y = 0
+                            { x = 120
+                            , y = 70
                             }
 
                     True ->
