@@ -5,6 +5,7 @@ import Animator.Css
 import Animator.Inline
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableTerra, terraAttacker, terraStats)
 import Browser
+import Browser.Events exposing (onAnimationFrameDelta)
 import Canvas.Texture exposing (sprite)
 import Color
 import Html exposing (Html, button, div, img, text)
@@ -23,6 +24,7 @@ type alias Model =
     , paused : Bool
     , faded : Animator.Timeline Bool
     , encounter : Maybe Encounter
+    , time : Int
     }
 
 
@@ -101,6 +103,7 @@ initialModel seed =
     , faded = Animator.init False
     , paused = False
     , encounter = Just basicEncounter
+    , time = 0
     }
 
 
@@ -112,6 +115,7 @@ type Msg
     | TogglePause
     | Tick Time.Posix
     | Fade Bool
+    | Frame Float
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -149,6 +153,23 @@ update msg model =
             ( { model | paused = not model.paused }, Cmd.none )
 
         Tick newTime ->
+            let
+                updatedTime =
+                    model.time + Time.posixToMillis newTime
+
+                _ =
+                    Debug.log "updatedTime" updatedTime
+            in
+            ( model |> Animator.update newTime animator, Cmd.none )
+
+        Frame timePassed ->
+            let
+                _ =
+                    Debug.log "timePassed" timePassed
+
+                newTime =
+                    Time.millisToPosix (round timePassed)
+            in
             ( model |> Animator.update newTime animator, Cmd.none )
 
         Fade newFaded ->
@@ -291,12 +312,12 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    if model.paused == False then
-        animator
-            |> Animator.toSubscription Tick model
-
-    else
-        Sub.none
+    -- if model.paused == False then
+    --     animator
+    --         |> Animator.toSubscription Tick model
+    -- else
+    --     Sub.none
+    Sub.batch [ onAnimationFrameDelta Frame ]
 
 
 main : Program () Model Msg
