@@ -1,25 +1,82 @@
 module Main exposing (main)
 
-import Browser
-import Html exposing (Html, button, div, img)
-import Html.Events exposing (onClick)
-import Html.Attributes exposing (src, style, class)
-import Battle exposing (getRandomNumberFromRange, AttackMissesDeathProtectedTargets(..), Formation(..), Element(..),getHit, HitResult(..), hitResultToString, terraStats, playableTerra, dirk, lockeStats, terraAttacker, lockeTarget, playableLocke, getDamage, fireSpell, Attack(..), SpellPower(..), MagicPower(..), Level(..), Relic(..), EquippedRelics)
-import Random
 import Animator
-import Animator.Inline
-import Time
 import Animator.Css
+import Animator.Inline
+import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableTerra, terraAttacker, terraStats)
+import Browser
+import Canvas.Texture exposing (sprite)
 import Color
+import Html exposing (Html, button, div, img)
+import Html.Attributes exposing (class, src, style)
+import Html.Events exposing (onClick)
 import Html.Lazy
+import Random
+import Time
+
 
 type alias Model =
-    { damage : Int 
+    { damage : Int
     , initialSeed : Random.Seed
     , currentSeed : Random.Seed
-    , hitResult : HitResult 
+    , hitResult : HitResult
     , paused : Bool
-    , faded : Animator.Timeline Bool }
+    , faded : Animator.Timeline Bool
+    , encounter : Maybe Encounter
+    }
+
+
+type alias Encounter =
+    { enemies : List SpriteMonster
+    , formation : Formation
+    }
+
+
+type alias SpriteMonster =
+    { stats : MonsterStats
+    , image : String
+    , width : Float
+    , height : Float
+    }
+
+
+basicEncounter : Encounter
+basicEncounter =
+    { enemies = [ rhobite, rhobite, rhobite ]
+    , formation = NormalFormation False
+    }
+
+
+rhobite : SpriteMonster
+rhobite =
+    { stats =
+        { type_ = Rhobite
+        , level = Level 10
+        , hitPoints = HitPoints 135
+        , magicPoints = MagicPoints 40
+        , xp = XP 53
+        , gold = Gold 110
+        , battlePower = BattlePower 9
+        , vigor = Vigor 10
+        , hitRate = HitRate 100
+        , defense = Defense 70
+        , evade = Evade 0
+        , magicPower = MagicPower 10
+        , speed = Speed 30
+        , stamina = Stamina 0
+        , magicDefense = MagicDefense 140
+        , mblock = MBlock 0
+        , stolenItems = [ Potion ]
+        , droppedItems = [ Tonic, Potion, DriedMeat ]
+        , absorbs = []
+        , noEffect = []
+        , weak = [ WaterElement ]
+        }
+    , image = "src/rhobite.png"
+    , width = 32
+    , height = 32
+    }
+
 
 animator : Animator.Animator Model
 animator =
@@ -34,14 +91,17 @@ animator =
                 { model | faded = newFaded }
             )
 
+
 initialModel : Random.Seed -> Model
 initialModel seed =
     { damage = 0
     , initialSeed = seed
     , currentSeed = seed
-    , hitResult = Miss 
+    , hitResult = Miss
     , faded = Animator.init False
-    , paused = False }
+    , paused = False
+    , encounter = Nothing
+    }
 
 
 type Msg
@@ -53,96 +113,106 @@ type Msg
     | Tick Time.Posix
     | Fade Bool
 
-update : Msg -> Model -> (Model, Cmd Msg)
+
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         FireSpellAgainstSingleTarget ->
             let
-                ( damage, newSeed ) = 
+                ( damage, newSeed ) =
                     getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] terraAttacker lockeTarget
             in
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
+
         FireSpellAgainstMultipleTargets ->
             let
-                
-                ( damage, newSeed ) = 
+                ( damage, newSeed ) =
                     getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] terraAttacker lockeTarget
             in
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
+
         SwordPhysicalAttackSingleTarget ->
             let
-                ( damage, newSeed ) = 
+                ( damage, newSeed ) =
                     getDamage model.currentSeed (NormalFormation False) (PlayerPhysicalAttack dirk) NotElement [] terraAttacker lockeTarget
             in
-            
             ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
+
         AttemptToHit ->
             let
-                (hitResult, newSeed) =
+                ( hitResult, newSeed ) =
                     getHit model.currentSeed (PlayerPhysicalAttack dirk) (NormalFormation False) (AttackMissesDeathProtectedTargets False) terraAttacker lockeTarget
             in
             ( { model | hitResult = hitResult, currentSeed = newSeed }, Cmd.none )
-        
+
         TogglePause ->
-            ( { model | paused = not model.paused }, Cmd.none)
+            ( { model | paused = not model.paused }, Cmd.none )
+
         Tick newTime ->
             ( model |> Animator.update newTime animator, Cmd.none )
+
         Fade newFaded ->
-            ( { model | faded =
-                            model.faded
-                                |> Animator.go Animator.slowly newFaded}, Cmd.none )
+            ( { model
+                | faded =
+                    model.faded
+                        |> Animator.go (Animator.seconds 3) newFaded
+              }
+            , Cmd.none
+            )
+
 
 view : Model -> Html Msg
 view model =
-    div [ ]
+    div []
         [ stylesheet
-        ,  div [][Html.text ("Damage: " ++ (String.fromInt model.damage))]
-        , button [onClick FireSpellAgainstSingleTarget ][Html.text "Fire Spell Single Target"]
-        , div [][]
-        , button [onClick FireSpellAgainstMultipleTargets ][Html.text "Fire Spell Multiple Targets"]
-        , div [][]
-        , button [onClick SwordPhysicalAttackSingleTarget][Html.text "Sword Physical Attack Single Target"]
-        , div [][]
-        , div [][Html.text ("Hit Result: " ++ (hitResultToString model.hitResult))]
-        , button [onClick AttemptToHit][Html.text "Attempt Hit"]
-        , div [][]
-        , button [onClick (Fade False)][Html.text "Fade False"]
-        , div [][]
-        , button [onClick (Fade True)][Html.text "Fade True"]
-        , div [][
-            
-            -- img [src "src/Sabin.png"
-            -- , Animator.Inline.xy
-            --     model.faded
-            --     (\ faded -> if faded == False then
-            --         { x = Animator.at 0, y = Animator.at 0 }
-            --     else
-            --         { x = Animator.at 120, y = Animator.at 0 }
-            --     )
-                            
-            -- ][]
+        , div [] [ Html.text ("Damage: " ++ String.fromInt model.damage) ]
+        , button [ onClick FireSpellAgainstSingleTarget ] [ Html.text "Fire Spell Single Target" ]
+        , div [] []
+        , button [ onClick FireSpellAgainstMultipleTargets ] [ Html.text "Fire Spell Multiple Targets" ]
+        , div [] []
+        , button [ onClick SwordPhysicalAttackSingleTarget ] [ Html.text "Sword Physical Attack Single Target" ]
+        , div [] []
+        , div [] [ Html.text ("Hit Result: " ++ hitResultToString model.hitResult) ]
+        , button [ onClick AttemptToHit ] [ Html.text "Attempt Hit" ]
+        , div [] []
+        , button [ onClick (Fade False) ] [ Html.text "Fade False" ]
+        , div [] []
+        , button [ onClick (Fade True) ] [ Html.text "Fade True" ]
+        , div []
+            [ -- img [src "src/Sabin.png"
+              -- , Animator.Inline.xy
+              --     model.faded
+              --     (\ faded -> if faded == False then
+              --         { x = Animator.at 0, y = Animator.at 0 }
+              --     else
+              --         { x = Animator.at 120, y = Animator.at 0 }
+              --     )
+              -- ][]
+              viewSabinMove model
+            ]
+        , div [] []
+        , pauseButton model.paused
+        ]
 
-            viewSabinMove model
-                        
-        ]
-        ]
 
 viewSabinMove : Model -> Html Msg
 viewSabinMove model =
     Animator.Css.node "div"
         model.faded
         [ Animator.Css.transform <|
-            \ state ->
+            \state ->
                 case state of
                     False ->
                         Animator.Css.xy
                             { x = 0
-                            , y = 0 }
+                            , y = 0
+                            }
+
                     True ->
                         Animator.Css.xy
-                            { x = 120
-                            , y = 0 }
-            
+                            { x = 720
+                            , y = 0
+                            }
         ]
         [ style "position" "absolute"
         , style "top" "0px"
@@ -151,11 +221,21 @@ viewSabinMove model =
         , style "height" "24px"
         , style "background-image" "url('src/Sabin.png')"
         , style "background-repeat" "no-repeat"
+
         -- , style "transform-origin" "30% 50%"
         , style "background-position" "-20px -62px"
         , class "pixel-art"
         ]
-        [ ]
+        []
+
+
+pauseButton : Bool -> Html Msg
+pauseButton paused =
+    if paused == True then
+        button [ onClick TogglePause ] [ Html.text "Unpause" ]
+
+    else
+        button [ onClick TogglePause ] [ Html.text "Pause" ]
 
 
 stylesheet : Html msg
@@ -179,14 +259,21 @@ body, html {
 }
 """ ]
 
-init : () -> (Model, Cmd Msg)
+
+init : () -> ( Model, Cmd Msg )
 init _ =
-    ( initialModel (Random.initialSeed 42) , Cmd.none )
+    ( initialModel (Random.initialSeed 42), Cmd.none )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    animator
-    |> Animator.toSubscription Tick model
+    if model.paused == False then
+        animator
+            |> Animator.toSubscription Tick model
+
+    else
+        Sub.none
+
 
 main : Program () Model Msg
 main =
