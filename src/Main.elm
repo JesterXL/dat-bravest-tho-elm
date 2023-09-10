@@ -97,7 +97,7 @@ rhobite =
         , noEffect = []
         , weak = [ WaterElement ]
         }
-    , image = "src/rhobite.png"
+    , image = "rhobite.png"
     , width = 32
     , height = 32
     }
@@ -106,7 +106,7 @@ rhobite =
 sabin : SpriteCharacter
 sabin =
     { playableCharacter = playableSabin
-    , image = "src/Sabin.png"
+    , image = "Sabin.png"
     , width = 16
     , height = 24
     , atbGauge = ATBGaugeCharging 0
@@ -443,7 +443,7 @@ viewSabinMove model =
         , style "top" "0px"
         , style "width" "16px"
         , style "height" "24px"
-        , style "background-image" "url('src/Sabin.png')"
+        , style "background-image" "url('Sabin.png')"
         , style "background-repeat" "no-repeat"
 
         -- , style "transform-origin" "30% 50%"
@@ -464,8 +464,8 @@ pauseButton paused =
 
 viewMenu : Model -> Html Msg
 viewMenu model =
-    div []
-        [ button []
+    div [ class "w-[300px] h-[320px] bg-blue-800 border-4 border-solid rounded-md" ]
+        [ button [ class "text-white" ]
             [ Html.text "Attack" ]
         , button
             []
