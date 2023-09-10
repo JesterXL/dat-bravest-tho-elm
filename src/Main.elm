@@ -6,6 +6,9 @@ import Animator.Inline
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
+import Canvas exposing (rect, shapes)
+import Canvas.Settings exposing (fill)
+import Canvas.Settings.Text exposing (TextAlign(..), align, font)
 import Canvas.Texture exposing (sprite)
 import Color
 import Html exposing (Html, button, div, img, text)
@@ -191,8 +194,8 @@ update msg model =
                 updatedTime =
                     model.time + Time.posixToMillis newTime
 
-                _ =
-                    Debug.log "updatedTime" updatedTime
+                -- _ =
+                --     Debug.log "updatedTime" updatedTime
             in
             ( model |> Animator.update newTime animator, Cmd.none )
 
@@ -233,8 +236,8 @@ update msg model =
                                             )
                                             encounter
 
-                                _ =
-                                    Debug.log "updatedEncounterLoop" updatedEncounterLoop.characters
+                                -- _ =
+                                --     Debug.log "updatedEncounterLoop" updatedEncounterLoop.characters
                             in
                             Just updatedEncounterLoop
 
@@ -311,8 +314,51 @@ view model =
     div []
         [ stylesheet
         , viewEcounter model
+        , drawBars model
         , pauseButton model.paused
         ]
+
+
+drawBars : Model -> Html Msg
+drawBars model =
+    case model.encounter of
+        Nothing ->
+            div [] []
+
+        Just encounter ->
+            Canvas.toHtml ( 300, 200 )
+                []
+                (List.map
+                    (\spriteCharacter ->
+                        drawBar spriteCharacter.atbGauge
+                    )
+                    encounter.characters
+                )
+
+
+
+-- , Canvas.text
+--     [ font { size = 48, family = "sans-serif" }, align Center ]
+--     ( 50, 50 )
+--     "Hello world"
+-- ]
+
+
+drawBar : ATBGauge -> Canvas.Renderable
+drawBar atbGauge =
+    case atbGauge of
+        ATBGaugeCharging currentCharge ->
+            let
+                percentage =
+                    toFloat currentCharge / 65536.0 * 100
+
+                _ =
+                    Debug.log "percentage" percentage
+            in
+            shapes [ fill Color.yellow ] [ rect ( 0, 0 ) percentage 20 ]
+
+        ATBGaugeReady ->
+            shapes [ fill Color.yellow ] [ rect ( 0, 0 ) 100 20 ]
 
 
 viewEcounter : Model -> Html Msg
