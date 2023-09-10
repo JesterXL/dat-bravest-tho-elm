@@ -7,7 +7,7 @@ import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), Battl
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
 import Canvas exposing (rect, shapes)
-import Canvas.Settings exposing (fill)
+import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Text exposing (TextAlign(..), align, font)
 import Canvas.Texture exposing (sprite)
 import Color
@@ -36,7 +36,14 @@ type alias Encounter =
     { enemies : List SpriteMonster
     , characters : List SpriteCharacter
     , formation : Formation
+    , state : EncounterState
     }
+
+
+type EncounterState
+    = ATBsCharging
+    | BattleAnimation
+    | CharacterSelecting
 
 
 type alias SpriteMonster =
@@ -61,6 +68,7 @@ basicEncounter =
     { enemies = [ rhobite, rhobite, rhobite ]
     , characters = [ sabin ]
     , formation = NormalFormation False
+    , state = ATBsCharging
     }
 
 
@@ -312,10 +320,10 @@ updateATBGauges spriteCharacters =
 view : Model -> Html Msg
 view model =
     div []
-        [ stylesheet
-        , viewEcounter model
+        [ viewEcounter model
         , drawBars model
         , pauseButton model.paused
+        , viewMenu model
         ]
 
 
@@ -328,11 +336,12 @@ drawBars model =
         Just encounter ->
             Canvas.toHtml ( 300, 200 )
                 []
-                (List.map
-                    (\spriteCharacter ->
-                        drawBar spriteCharacter.atbGauge
-                    )
-                    encounter.characters
+                ([]
+                    ++ List.concatMap
+                        (\spriteCharacter ->
+                            drawBar spriteCharacter.atbGauge
+                        )
+                        encounter.characters
                 )
 
 
@@ -344,21 +353,20 @@ drawBars model =
 -- ]
 
 
-drawBar : ATBGauge -> Canvas.Renderable
+drawBar : ATBGauge -> List Canvas.Renderable
 drawBar atbGauge =
     case atbGauge of
         ATBGaugeCharging currentCharge ->
             let
                 percentage =
                     toFloat currentCharge / 65536.0 * 100
-
-                _ =
-                    Debug.log "percentage" percentage
             in
-            shapes [ fill Color.yellow ] [ rect ( 0, 0 ) percentage 20 ]
+            [ shapes [ fill Color.yellow ] [ rect ( 0, 0 ) percentage 20 ]
+            , shapes [ stroke Color.black ] [ rect ( 0, 0 ) 100 20 ]
+            ]
 
         ATBGaugeReady ->
-            shapes [ fill Color.yellow ] [ rect ( 0, 0 ) 100 20 ]
+            [ shapes [ fill Color.yellow, stroke Color.black ] [ rect ( 0, 0 ) 100 20 ] ]
 
 
 viewEcounter : Model -> Html Msg
@@ -454,26 +462,18 @@ pauseButton paused =
         button [ onClick TogglePause ] [ Html.text "Pause" ]
 
 
-stylesheet : Html msg
-stylesheet =
-    Html.node "style"
-        []
-        [ Html.text """@import url('https://fonts.googleapis.com/css?family=Roboto&display=swap');
-body, html {
-    margin: 0;
-    padding:0;
-    border:0;
-    display:block;
-    position: relative;
-    width: 100%;
-    height: 100%;
-}
-.pixel-art {
-    image-rendering: pixelated;
-    image-rendering: -moz-crisp-edges;
-    image-rendering: crisp-edges;
-}
-""" ]
+viewMenu : Model -> Html Msg
+viewMenu model =
+    div []
+        [ button []
+            [ Html.text "Attack" ]
+        , button
+            []
+            [ Html.text "Magic" ]
+        , button
+            []
+            [ Html.text "Items" ]
+        ]
 
 
 init : () -> ( Model, Cmd Msg )
