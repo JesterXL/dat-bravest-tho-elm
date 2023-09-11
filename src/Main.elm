@@ -20,8 +20,7 @@ import Time
 
 
 type alias Model =
-    { damage : Int
-    , initialSeed : Random.Seed
+    { initialSeed : Random.Seed
     , currentSeed : Random.Seed
     , hitResult : HitResult
     , paused : Bool
@@ -140,8 +139,7 @@ animator =
 
 initialModel : Random.Seed -> Model
 initialModel seed =
-    { damage = 0
-    , initialSeed = seed
+    { initialSeed = seed
     , currentSeed = seed
     , hitResult = Miss
     , faded = Animator.init False
@@ -165,11 +163,7 @@ type ATBGauge
 
 
 type Msg
-    = FireSpellAgainstSingleTarget
-    | FireSpellAgainstMultipleTargets
-    | SwordPhysicalAttackSingleTarget
-    | AttemptToHit
-    | TogglePause
+    = TogglePause
     | Tick Time.Posix
     | Fade Bool
     | Frame Float
@@ -179,34 +173,6 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        FireSpellAgainstSingleTarget ->
-            let
-                ( damage, newSeed ) =
-                    getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] terraAttacker lockeTarget
-            in
-            ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
-
-        FireSpellAgainstMultipleTargets ->
-            let
-                ( damage, newSeed ) =
-                    getDamage model.currentSeed (NormalFormation False) (PlayerMagicalAttack fireSpell) NotElement [] terraAttacker lockeTarget
-            in
-            ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
-
-        SwordPhysicalAttackSingleTarget ->
-            let
-                ( damage, newSeed ) =
-                    getDamage model.currentSeed (NormalFormation False) (PlayerPhysicalAttack dirk) NotElement [] terraAttacker lockeTarget
-            in
-            ( { model | damage = damage, currentSeed = newSeed }, Cmd.none )
-
-        AttemptToHit ->
-            let
-                ( hitResult, newSeed ) =
-                    getHit model.currentSeed (PlayerPhysicalAttack dirk) (NormalFormation False) (AttackMissesDeathProtectedTargets False) terraAttacker lockeTarget
-            in
-            ( { model | hitResult = hitResult, currentSeed = newSeed }, Cmd.none )
-
         TogglePause ->
             ( { model | paused = not model.paused }, Cmd.none )
 
@@ -368,9 +334,9 @@ drawCanvas model =
             Canvas.toHtmlWith
                 { width = 300
                 , height = 200
-                , textures = [ Canvas.Texture.loadFromImageUrl "Sabin.png" TextureLoaded ]
+                , textures = []
                 }
-                []
+                [ class "pixel-art" ]
                 []
 
         Just encounter ->
