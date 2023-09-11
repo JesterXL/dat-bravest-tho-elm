@@ -29,7 +29,18 @@ type alias Model =
     , encounter : Maybe Encounter
     , time : Int
     , battleTimer : BattlerTimer
+    , sprites : Load Sprites
     }
+
+
+type Load a
+    = Loading
+    | Success a
+    | Failure
+
+
+type alias Sprites =
+    { sabin : Canvas.Texture.Texture }
 
 
 type alias Encounter =
@@ -138,6 +149,7 @@ initialModel seed =
     , encounter = Just basicEncounter
     , time = 0
     , battleTimer = { millisecondsPassed = 0, counter = 0 }
+    , sprites = Loading
     }
 
 
@@ -161,6 +173,7 @@ type Msg
     | Tick Time.Posix
     | Fade Bool
     | Frame Float
+    | TextureLoaded (Maybe Canvas.Texture.Texture)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -272,6 +285,26 @@ update msg model =
             , Cmd.none
             )
 
+        TextureLoaded Nothing ->
+            ( { model | sprites = Failure }, Cmd.none )
+
+        TextureLoaded (Just texture) ->
+            ( { model
+                | sprites =
+                    Success
+                        { sabin =
+                            Canvas.Texture.sprite
+                                { x = 20
+                                , y = 62
+                                , width = 16
+                                , height = 24
+                                }
+                                texture
+                        }
+              }
+            , Cmd.none
+            )
+
 
 
 -- This is wrong... I need to keep track of
@@ -319,38 +352,63 @@ updateATBGauges spriteCharacters =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ viewEcounter model
-        , drawBars model
-        , pauseButton model.paused
-        , viewMenu model
-        ]
+    -- viewEcounter model
+    drawCanvas model
 
 
-drawBars : Model -> Html Msg
-drawBars model =
+
+-- , pauseButton model.paused
+-- , viewMenu model
+
+
+drawCanvas : Model -> Html Msg
+drawCanvas model =
     case model.encounter of
         Nothing ->
-            div [] []
+            Canvas.toHtmlWith
+                { width = 300
+                , height = 200
+                , textures = [ Canvas.Texture.loadFromImageUrl "Sabin.png" TextureLoaded ]
+                }
+                []
+                []
 
         Just encounter ->
-            Canvas.toHtml ( 300, 200 )
+            Canvas.toHtmlWith
+                { width = 300
+                , height = 200
+                , textures = [ Canvas.Texture.loadFromImageUrl "Sabin.png" TextureLoaded ]
+                }
                 []
-                ([]
+                (shapes [ fill (Color.rgb 0.85 0.92 1) ] [ rect ( 0, 0 ) 300 200 ]
+                    :: (case model.sprites of
+                            Loading ->
+                                [ Canvas.text
+                                    [ font { size = 48, family = "sans-serif" }, align Center ]
+                                    ( 50, 50 )
+                                    "Loading..."
+                                ]
+
+                            Success sprites ->
+                                [ Canvas.texture
+                                    []
+                                    ( 200, 100 )
+                                    sprites.sabin
+                                ]
+
+                            Failure ->
+                                [ Canvas.text
+                                    [ font { size = 48, family = "sans-serif" }, align Center ]
+                                    ( 50, 50 )
+                                    "Failed to load textures."
+                                ]
+                       )
                     ++ List.concatMap
                         (\spriteCharacter ->
                             drawBar spriteCharacter.atbGauge
                         )
                         encounter.characters
                 )
-
-
-
--- , Canvas.text
---     [ font { size = 48, family = "sans-serif" }, align Center ]
---     ( 50, 50 )
---     "Hello world"
--- ]
 
 
 drawBar : ATBGauge -> List Canvas.Renderable
