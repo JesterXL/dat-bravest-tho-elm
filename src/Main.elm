@@ -1,5 +1,6 @@
 module Main exposing (main)
 
+import Animator exposing (color)
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
@@ -42,6 +43,24 @@ type alias Encounter =
     , formation : Formation
     , state : EncounterState
     }
+
+
+charactersATBIsReady : Encounter -> Bool
+charactersATBIsReady encounter =
+    let
+        readyCharacters =
+            List.filter
+                (\spriteCharacter ->
+                    case spriteCharacter.atbGauge of
+                        ATBGaugeReady ->
+                            True
+
+                        ATBGaugeCharging _ ->
+                            False
+                )
+                encounter.characters
+    in
+    List.isEmpty readyCharacters == False
 
 
 type EncounterState
@@ -278,16 +297,11 @@ updateATBGauges spriteCharacters =
 
 view : Model -> Html Msg
 view model =
-    drawCanvas model
-
-
-drawCanvas : Model -> Html Msg
-drawCanvas model =
     case model.gameSetupStatus of
         SettingUp ->
             Canvas.toHtmlWith
-                { width = 300
-                , height = 200
+                { width = gameWidth
+                , height = gameHeight
                 , textures = [ Canvas.Texture.loadFromImageUrl "Sabin.png" TextureLoaded ]
                 }
                 []
@@ -299,8 +313,8 @@ drawCanvas model =
 
         SetupFailed ->
             Canvas.toHtmlWith
-                { width = 300
-                , height = 200
+                { width = gameWidth
+                , height = gameHeight
                 , textures = []
                 }
                 []
@@ -312,12 +326,12 @@ drawCanvas model =
 
         SetupComplete { battleTimer, sprites, encounter } ->
             Canvas.toHtmlWith
-                { width = 300
-                , height = 200
+                { width = gameWidth
+                , height = gameHeight
                 , textures = []
                 }
                 []
-                (shapes [ fill (Color.rgb 0.85 0.92 1) ] [ rect ( 0, 0 ) 300 200 ]
+                (shapes [ fill (Color.rgb 0.85 0.92 1) ] [ rect ( 0, 0 ) gameWidthFloat gameHeightFloat ]
                     :: [ Canvas.texture
                             []
                             ( 200, 100 )
@@ -339,7 +353,28 @@ drawCanvas model =
                             |> List.concatMap
                                 (\monster -> monster)
                        )
+                    ++ drawMenu model battleTimer sprites encounter
                 )
+
+
+gameWidth : Int
+gameWidth =
+    480
+
+
+gameHeight : Int
+gameHeight =
+    320
+
+
+gameWidthFloat : Float
+gameWidthFloat =
+    toFloat gameWidth
+
+
+gameHeightFloat : Float
+gameHeightFloat =
+    toFloat gameHeight
 
 
 drawBar : ATBGauge -> Int -> List Canvas.Renderable
@@ -382,6 +417,23 @@ pauseButton paused =
 
     else
         button [ onClick TogglePause ] [ Html.text "Pause" ]
+
+
+drawMenu : Model -> BattleTimer -> Sprites -> Encounter -> List Canvas.Renderable
+drawMenu model battleTimer sprites encounter =
+    if charactersATBIsReady encounter == False then
+        [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
+        , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
+        ]
+
+    else
+        [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
+        , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
+        , Canvas.text
+            [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+            ( 50, 220 )
+            "Attack"
+        ]
 
 
 viewMenu : Model -> Html Msg
