@@ -362,108 +362,35 @@ drawCanvas model =
                             ( 200, 100 )
                             sprites.sabin
                        ]
-                    ++ List.concatMap
-                        (\spriteCharacter ->
-                            drawBar spriteCharacter.atbGauge
-                        )
-                        encounter.characters
+                    ++ (List.indexedMap
+                            (\index spriteCharacter ->
+                                drawBar spriteCharacter.atbGauge index
+                            )
+                            encounter.characters
+                            |> List.concatMap
+                                (\bar -> bar)
+                       )
                 )
 
 
-drawBar : ATBGauge -> List Canvas.Renderable
-drawBar atbGauge =
+drawBar : ATBGauge -> Int -> List Canvas.Renderable
+drawBar atbGauge index =
+    let
+        offsetIndex =
+            toFloat index + 0
+    in
     case atbGauge of
         ATBGaugeCharging currentCharge ->
             let
                 percentage =
                     toFloat currentCharge / 65536.0 * 100
             in
-            [ shapes [ fill Color.yellow ] [ rect ( 0, 0 ) percentage 20 ]
-            , shapes [ stroke Color.black ] [ rect ( 0, 0 ) 100 20 ]
+            [ shapes [ fill Color.yellow ] [ rect ( 0, offsetIndex * 20 ) percentage 20 ]
+            , shapes [ stroke Color.black ] [ rect ( 0, offsetIndex * 20 ) 100 20 ]
             ]
 
         ATBGaugeReady ->
-            [ shapes [ fill Color.yellow, stroke Color.black ] [ rect ( 0, 0 ) 100 20 ] ]
-
-
-viewEcounter : Encounter -> Html Msg
-viewEcounter encounter =
-    div []
-        [ viewEncounterEnemies encounter
-
-        -- , viewSabinMove model
-        ]
-
-
-viewEncounterEnemies : Encounter -> Html Msg
-viewEncounterEnemies encounter =
-    div []
-        (List.indexedMap
-            viewEnemy
-            encounter.enemies
-        )
-
-
-viewEnemy : Int -> SpriteMonster -> Html Msg
-viewEnemy index enemy =
-    Animator.Css.node "div"
-        (Animator.init True)
-        [ Animator.Css.transform <|
-            \state ->
-                Animator.Css.xy
-                    { x = 0
-                    , y = (toFloat index + 1) * 32
-                    }
-        ]
-        [ style "position" "absolute"
-        , style "top" "0px"
-        , style "top" "0px"
-
-        -- , style "width" (String.fromInt enemy.width ++ "px")
-        -- , style "height" (String.fromInt enemy.height ++ "px")
-        , style "width" "32px"
-        , style "height" "32px"
-        , style "background-image" ("url('" ++ enemy.image ++ "')")
-        , style "background-repeat" "no-repeat"
-
-        -- , style "background-position" "-20px -62px"
-        , class "pixel-art"
-        ]
-        []
-
-
-viewSabinMove : Model -> Html Msg
-viewSabinMove model =
-    Animator.Css.node "div"
-        model.faded
-        [ Animator.Css.transform <|
-            \state ->
-                case state of
-                    False ->
-                        Animator.Css.xy
-                            { x = 120
-                            , y = 70
-                            }
-
-                    True ->
-                        Animator.Css.xy
-                            { x = 720
-                            , y = 0
-                            }
-        ]
-        [ style "position" "absolute"
-        , style "top" "0px"
-        , style "top" "0px"
-        , style "width" "16px"
-        , style "height" "24px"
-        , style "background-image" "url('Sabin.png')"
-        , style "background-repeat" "no-repeat"
-
-        -- , style "transform-origin" "30% 50%"
-        , style "background-position" "-20px -62px"
-        , class "pixel-art"
-        ]
-        []
+            [ shapes [ fill Color.yellow, stroke Color.black ] [ rect ( 0, offsetIndex * 20 ) 100 20 ] ]
 
 
 pauseButton : Bool -> Html Msg
