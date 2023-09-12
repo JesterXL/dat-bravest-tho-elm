@@ -1,8 +1,5 @@
 module Main exposing (main)
 
-import Animator
-import Animator.Css
-import Animator.Inline
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
@@ -14,7 +11,6 @@ import Color
 import Html exposing (Html, button, div, img, text)
 import Html.Attributes exposing (class, src, style)
 import Html.Events exposing (onClick)
-import Html.Lazy
 import Random
 import Time
 
@@ -23,7 +19,6 @@ type alias Model =
     { initialSeed : Random.Seed
     , currentSeed : Random.Seed
     , paused : Bool
-    , faded : Animator.Timeline Bool
     , time : Int
     , gameSetupStatus : GameSetupStatus
     }
@@ -120,25 +115,10 @@ sabin =
     }
 
 
-animator : Animator.Animator Model
-animator =
-    Animator.animator
-        |> Animator.Css.watching
-            -- we tell the animator how
-            -- to get the checked timeline using .checked
-            .faded
-            -- and we tell the animator how
-            -- to update that timeline as well
-            (\newFaded model ->
-                { model | faded = newFaded }
-            )
-
-
 initialModel : Random.Seed -> Model
 initialModel seed =
     { initialSeed = seed
     , currentSeed = seed
-    , faded = Animator.init False
     , paused = False
     , time = 0
     , gameSetupStatus = SettingUp
@@ -158,8 +138,6 @@ type ATBGauge
 
 type Msg
     = TogglePause
-    | Tick Time.Posix
-    | Fade Bool
     | Frame Float
     | TextureLoaded (Maybe Canvas.Texture.Texture)
 
@@ -169,16 +147,6 @@ update msg model =
     case msg of
         TogglePause ->
             ( { model | paused = not model.paused }, Cmd.none )
-
-        Tick newTime ->
-            let
-                updatedTime =
-                    model.time + Time.posixToMillis newTime
-
-                -- _ =
-                --     Debug.log "updatedTime" updatedTime
-            in
-            ( model |> Animator.update newTime animator, Cmd.none )
 
         Frame timePassed ->
             case model.gameSetupStatus of
@@ -229,16 +197,7 @@ update msg model =
                                         }
                             }
                     in
-                    ( updatedModel |> Animator.update (Time.millisToPosix timePassedInt) animator, Cmd.none )
-
-        Fade newFaded ->
-            ( { model
-                | faded =
-                    model.faded
-                        |> Animator.go (Animator.seconds 3) newFaded
-              }
-            , Cmd.none
-            )
+                    ( updatedModel, Cmd.none )
 
         TextureLoaded Nothing ->
             ( { model | gameSetupStatus = SetupFailed }, Cmd.none )
