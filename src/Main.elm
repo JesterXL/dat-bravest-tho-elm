@@ -36,7 +36,9 @@ type GameSetupStatus
 
 
 type alias Sprites =
-    { sabin : Canvas.Texture.Texture }
+    { sabin : Canvas.Texture.Texture
+    , rhobite : Canvas.Texture.Texture
+    }
 
 
 type alias Encounter =
@@ -55,7 +57,6 @@ type EncounterState
 
 type alias SpriteMonster =
     { stats : MonsterStats
-    , image : String
     , width : Int
     , height : Int
     }
@@ -104,7 +105,6 @@ rhobite =
         , noEffect = []
         , weak = [ WaterElement ]
         }
-    , image = "rhobite.png"
     , width = 32
     , height = 32
     }
@@ -257,6 +257,14 @@ update msg model =
                                     , height = 24
                                     }
                                     texture
+                            , rhobite =
+                                Canvas.Texture.sprite
+                                    { x = 140
+                                    , y = 200
+                                    , width = 32
+                                    , height = 32
+                                    }
+                                    texture
                             }
                         , encounter = basicEncounter
                         }
@@ -311,13 +319,7 @@ updateATBGauges spriteCharacters =
 
 view : Model -> Html Msg
 view model =
-    -- viewEcounter model
     drawCanvas model
-
-
-
--- , pauseButton model.paused
--- , viewMenu model
 
 
 drawCanvas : Model -> Html Msg
@@ -370,6 +372,14 @@ drawCanvas model =
                             |> List.concatMap
                                 (\bar -> bar)
                        )
+                    ++ (List.indexedMap
+                            (\index spriteMonster ->
+                                drawEnemy sprites spriteMonster index
+                            )
+                            encounter.enemies
+                            |> List.concatMap
+                                (\monster -> monster)
+                       )
                 )
 
 
@@ -391,6 +401,19 @@ drawBar atbGauge index =
 
         ATBGaugeReady ->
             [ shapes [ fill Color.yellow, stroke Color.black ] [ rect ( 0, offsetIndex * 20 ) 100 20 ] ]
+
+
+drawEnemy : Sprites -> SpriteMonster -> Int -> List Canvas.Renderable
+drawEnemy sprites spriteMonster index =
+    let
+        offsetIndex =
+            toFloat index + 0
+    in
+    [ Canvas.texture
+        []
+        ( 20, 40 + offsetIndex * 40 )
+        sprites.rhobite
+    ]
 
 
 pauseButton : Bool -> Html Msg
