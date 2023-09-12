@@ -22,20 +22,17 @@ import Time
 type alias Model =
     { initialSeed : Random.Seed
     , currentSeed : Random.Seed
-    , hitResult : HitResult
     , paused : Bool
     , faded : Animator.Timeline Bool
-    , encounter : Maybe Encounter
     , time : Int
-    , battleTimer : BattlerTimer
-    , sprites : Load Sprites
+    , gameSetupStatus : GameSetupStatus
     }
 
 
-type Load a
-    = Loading
-    | Success a
-    | Failure
+type GameSetupStatus
+    = SettingUp
+    | SetupComplete { battleTimer : BattleTimer, sprites : Sprites, encounter : Encounter }
+    | SetupFailed
 
 
 type alias Sprites =
@@ -141,17 +138,14 @@ initialModel : Random.Seed -> Model
 initialModel seed =
     { initialSeed = seed
     , currentSeed = seed
-    , hitResult = Miss
     , faded = Animator.init False
     , paused = False
-    , encounter = Just basicEncounter
     , time = 0
-    , battleTimer = { millisecondsPassed = 0, counter = 0 }
-    , sprites = Loading
+    , gameSetupStatus = SettingUp
     }
 
 
-type alias BattlerTimer =
+type alias BattleTimer =
     { millisecondsPassed : Int
     , counter : Int
     }
@@ -187,60 +181,55 @@ update msg model =
             ( model |> Animator.update newTime animator, Cmd.none )
 
         Frame timePassed ->
-            let
-                timePassedInt =
-                    round timePassed
+            case model.gameSetupStatus of
+                SettingUp ->
+                    ( model, Cmd.none )
 
-                currentBattleTimer =
-                    model.battleTimer
+                SetupFailed ->
+                    ( model, Cmd.none )
 
-                updatedBattleTimerMilliseconds =
-                    { currentBattleTimer
-                        | millisecondsPassed =
-                            model.battleTimer.millisecondsPassed + timePassedInt
-                    }
+                SetupComplete { battleTimer, sprites, encounter } ->
+                    let
+                        timePassedInt =
+                            round timePassed
 
-                updatedBattleTimerTimer =
-                    { updatedBattleTimerMilliseconds
-                        | counter = updatedBattleTimerMilliseconds.millisecondsPassed // 30
-                        , millisecondsPassed = remainderBy 30 updatedBattleTimerMilliseconds.millisecondsPassed
-                    }
+                        currentBattleTimer =
+                            battleTimer
 
-                updatedEncounter =
-                    case model.encounter of
-                        Nothing ->
-                            Nothing
+                        updatedBattleTimerMilliseconds =
+                            { currentBattleTimer
+                                | millisecondsPassed =
+                                    battleTimer.millisecondsPassed + timePassedInt
+                            }
 
-                        Just encounter ->
-                            let
-                                updatedEncounterLoop =
-                                    List.repeat updatedBattleTimerTimer.counter 0
-                                        |> List.foldl
-                                            (\_ encounterAccum ->
-                                                { encounterAccum
-                                                    | characters = updateATBGauges encounter.characters
-                                                }
-                                            )
-                                            encounter
+                        updatedBattleTimerTimer =
+                            { updatedBattleTimerMilliseconds
+                                | counter = updatedBattleTimerMilliseconds.millisecondsPassed // 30
+                                , millisecondsPassed = remainderBy 30 updatedBattleTimerMilliseconds.millisecondsPassed
+                            }
 
-                                -- _ =
-                                --     Debug.log "updatedEncounterLoop" updatedEncounterLoop.characters
-                            in
-                            Just updatedEncounterLoop
+                        updatedEncounter =
+                            List.repeat updatedBattleTimerTimer.counter 0
+                                |> List.foldl
+                                    (\_ encounterAccum ->
+                                        { encounterAccum
+                                            | characters = updateATBGauges encounter.characters
+                                        }
+                                    )
+                                    encounter
 
-                -- updateATBGauges
-                -- _ =
-                --     Debug.log "updatedBattleTimerTimer" updatedBattleTimerTimer
-                -- (96 * (Speed + 20)) / 16
-                -- 65536
-                updatedModel =
-                    { model
-                        | battleTimer = updatedBattleTimerTimer
-                        , time = model.time + timePassedInt
-                        , encounter = updatedEncounter
-                    }
-            in
-            ( updatedModel |> Animator.update (Time.millisToPosix timePassedInt) animator, Cmd.none )
+                        updatedModel =
+                            { model
+                                | time = model.time + timePassedInt
+                                , gameSetupStatus =
+                                    SetupComplete
+                                        { battleTimer = updatedBattleTimerTimer
+                                        , encounter = updatedEncounter
+                                        , sprites = sprites
+                                        }
+                            }
+                    in
+                    ( updatedModel |> Animator.update (Time.millisToPosix timePassedInt) animator, Cmd.none )
 
         Fade newFaded ->
             ( { model
@@ -252,20 +241,24 @@ update msg model =
             )
 
         TextureLoaded Nothing ->
-            ( { model | sprites = Failure }, Cmd.none )
+            ( { model | gameSetupStatus = SetupFailed }, Cmd.none )
 
         TextureLoaded (Just texture) ->
             ( { model
-                | sprites =
-                    Success
-                        { sabin =
-                            Canvas.Texture.sprite
-                                { x = 20
-                                , y = 62
-                                , width = 16
-                                , height = 24
-                                }
-                                texture
+                | gameSetupStatus =
+                    SetupComplete
+                        { battleTimer = { millisecondsPassed = 0, counter = 0 }
+                        , sprites =
+                            { sabin =
+                                Canvas.Texture.sprite
+                                    { x = 20
+                                    , y = 62
+                                    , width = 16
+                                    , height = 24
+                                    }
+                                    texture
+                            }
+                        , encounter = basicEncounter
                         }
               }
             , Cmd.none
@@ -329,46 +322,46 @@ view model =
 
 drawCanvas : Model -> Html Msg
 drawCanvas model =
-    case model.encounter of
-        Nothing ->
-            Canvas.toHtmlWith
-                { width = 300
-                , height = 200
-                , textures = []
-                }
-                [ class "pixel-art" ]
-                []
-
-        Just encounter ->
+    case model.gameSetupStatus of
+        SettingUp ->
             Canvas.toHtmlWith
                 { width = 300
                 , height = 200
                 , textures = [ Canvas.Texture.loadFromImageUrl "Sabin.png" TextureLoaded ]
                 }
                 []
+                [ Canvas.text
+                    [ font { size = 48, family = "sans-serif" }, align Center ]
+                    ( 50, 50 )
+                    "Loading textures..."
+                ]
+
+        SetupFailed ->
+            Canvas.toHtmlWith
+                { width = 300
+                , height = 200
+                , textures = []
+                }
+                []
+                [ Canvas.text
+                    [ font { size = 48, family = "sans-serif" }, align Center ]
+                    ( 50, 50 )
+                    "Setup failed."
+                ]
+
+        SetupComplete { battleTimer, sprites, encounter } ->
+            Canvas.toHtmlWith
+                { width = 300
+                , height = 200
+                , textures = []
+                }
+                []
                 (shapes [ fill (Color.rgb 0.85 0.92 1) ] [ rect ( 0, 0 ) 300 200 ]
-                    :: (case model.sprites of
-                            Loading ->
-                                [ Canvas.text
-                                    [ font { size = 48, family = "sans-serif" }, align Center ]
-                                    ( 50, 50 )
-                                    "Loading..."
-                                ]
-
-                            Success sprites ->
-                                [ Canvas.texture
-                                    []
-                                    ( 200, 100 )
-                                    sprites.sabin
-                                ]
-
-                            Failure ->
-                                [ Canvas.text
-                                    [ font { size = 48, family = "sans-serif" }, align Center ]
-                                    ( 50, 50 )
-                                    "Failed to load textures."
-                                ]
-                       )
+                    :: [ Canvas.texture
+                            []
+                            ( 200, 100 )
+                            sprites.sabin
+                       ]
                     ++ List.concatMap
                         (\spriteCharacter ->
                             drawBar spriteCharacter.atbGauge
@@ -393,17 +386,13 @@ drawBar atbGauge =
             [ shapes [ fill Color.yellow, stroke Color.black ] [ rect ( 0, 0 ) 100 20 ] ]
 
 
-viewEcounter : Model -> Html Msg
-viewEcounter model =
-    case model.encounter of
-        Nothing ->
-            div [] [ text "Waiting for Encounter to be created." ]
+viewEcounter : Encounter -> Html Msg
+viewEcounter encounter =
+    div []
+        [ viewEncounterEnemies encounter
 
-        Just encounter ->
-            div []
-                [ viewEncounterEnemies encounter
-                , viewSabinMove model
-                ]
+        -- , viewSabinMove model
+        ]
 
 
 viewEncounterEnemies : Encounter -> Html Msg
