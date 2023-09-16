@@ -27,8 +27,31 @@ type alias Model =
 
 type GameSetupStatus
     = SettingUp
-    | SetupComplete { battleTimer : BattleTimer, sprites : Sprites, encounter : Encounter }
+    | SetupComplete
+        { battleTimer : BattleTimer
+        , sprites : Sprites
+        , encounter : Encounter
+        , battleState : BattleState
+        , queuedActions : List BattleAction
+        }
     | SetupFailed
+
+
+type BattleState
+    = Intro
+    | Charging
+    | CharacterOrMonsterReady
+    | CharacterMagicOrAbilityOrItem
+    | MonsterDying
+    | AllCharactersDied
+
+
+type BattleAction
+    = Attack
+    | Spell
+    | Item
+    | Defend
+    | Abiity
 
 
 type alias Sprites =
@@ -213,6 +236,8 @@ update msg model =
                                         { battleTimer = updatedBattleTimerTimer
                                         , encounter = updatedEncounter
                                         , sprites = sprites
+                                        , battleState = Intro
+                                        , queuedActions = []
                                         }
                             }
                     in
@@ -245,6 +270,8 @@ update msg model =
                                     texture
                             }
                         , encounter = basicEncounter
+                        , battleState = Intro
+                        , queuedActions = []
                         }
               }
             , Cmd.none
@@ -433,6 +460,14 @@ drawMenu model battleTimer sprites encounter =
             [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
             ( 50, 220 )
             "Attack"
+        , Canvas.text
+            [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+            ( 50, 240 )
+            "Magic"
+        , Canvas.text
+            [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+            ( 50, 260 )
+            "Items"
         ]
 
 
