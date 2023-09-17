@@ -34,12 +34,15 @@ type alias Model =
     , rightPressed : Bool
     , upPressed : Bool
     , downPressed : Bool
-
-    -- , selectionCursor : SelectionCursor
+    , menuItems : List MenuItem
     , selectionTargets : Array Point
     , selectionIndex : Int
     , selectionTarget : Maybe Point
     }
+
+
+type alias MenuItem =
+    { x : Float, y : Float, text : String }
 
 
 type alias Point =
@@ -96,6 +99,8 @@ charactersATBIsReady characters =
 
 type alias SpriteMonster =
     { stats : MonsterStats
+    , x : Int
+    , y : Int
     , width : Int
     , height : Int
     }
@@ -104,6 +109,8 @@ type alias SpriteMonster =
 type alias SpriteCharacter =
     { playableCharacter : PlayableCharacter
     , image : String
+    , x : Int
+    , y : Int
     , width : Int
     , height : Int
     , atbGauge : ATBGauge
@@ -135,6 +142,8 @@ rhobite =
         , noEffect = []
         , weak = [ WaterElement ]
         }
+    , x = 20
+    , y = 40
     , width = 32
     , height = 32
     }
@@ -144,6 +153,8 @@ sabin : SpriteCharacter
 sabin =
     { playableCharacter = playableSabin
     , image = "Sabin.png"
+    , x = 200
+    , y = 100
     , width = 16
     , height = 24
     , atbGauge = ATBGaugeCharging 0
@@ -167,8 +178,7 @@ initialModel seed =
     , rightPressed = False
     , upPressed = False
     , downPressed = False
-
-    -- , selectionCursor = Hidden
+    , menuItems = [ { x = 50, y = 220, text = "Attack" }, { x = 50, y = 240, text = "Magic" }, { x = 50, y = 260, text = "Items" } ]
     , selectionTargets = Array.fromList [ { x = 50, y = 220 }, { x = 50, y = 240 }, { x = 50, y = 260 } ]
     , selectionIndex = 0
     , selectionTarget = Nothing
@@ -184,18 +194,6 @@ type alias BattleTimer =
 type ATBGauge
     = ATBGaugeCharging Int
     | ATBGaugeReady
-
-
-
--- type SelectionCursor
---     = Hidden
---     | Shown { x : Int, y : Int, context : CursorContextItem }
-
-
-type CursorContextItem
-    = MenuItem String
-    | SpriteTarget SpriteCharacter
-    | MonsterTarget SpriteMonster
 
 
 type Direction
@@ -450,22 +448,6 @@ update msg model =
                     ( { model | paused = False }, Cmd.none )
 
 
-
--- This is wrong... I need to keep track of
--- the whole timer internally, then reset it each
--- time I get a count
--- incrementBattleTimer : Int -> ( Int, Int )
--- incrementBattleTimer totalGameTime =
---     let
---         counts =
---             totalGameTime // 30
---         remainderTime =
---             remainderBy 30 totalGameTime
---     in
---     ( counts, remainderTime )
--- (96 * (Speed + 20)) / 16
-
-
 updateATBGauges : List SpriteCharacter -> List SpriteCharacter
 updateATBGauges spriteCharacters =
     List.map
@@ -533,7 +515,7 @@ view model =
                 (shapes [ fill (Color.rgb 0.85 0.92 1) ] [ rect ( 0, 0 ) gameWidthFloat gameHeightFloat ]
                     :: [ Canvas.texture
                             []
-                            ( 200, 100 )
+                            ( toFloat sabin.x, toFloat sabin.y )
                             sprites.sabin
                        ]
                     ++ (List.indexedMap
@@ -606,7 +588,8 @@ drawEnemy sprites spriteMonster index =
     in
     [ Canvas.texture
         []
-        ( 20, 40 + offsetIndex * 40 )
+        -- ( 20, 40 + offsetIndex * 40 )
+        ( toFloat spriteMonster.x, toFloat spriteMonster.y )
         sprites.rhobite
     ]
 
@@ -626,19 +609,15 @@ drawMenu model battleTimer sprites =
         CharacterOrMonsterReady ->
             [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
             , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
-            , Canvas.text
-                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
-                ( 50, 220 )
-                "Attack"
-            , Canvas.text
-                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
-                ( 50, 240 )
-                "Magic"
-            , Canvas.text
-                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
-                ( 50, 260 )
-                "Items"
             ]
+                ++ List.map
+                    (\menuItem ->
+                        Canvas.text
+                            [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
+                            ( menuItem.x, menuItem.y )
+                            menuItem.text
+                    )
+                    model.menuItems
 
         _ ->
             [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
