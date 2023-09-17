@@ -3,7 +3,7 @@ module Main exposing (main)
 import Animator exposing (color)
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
-import Browser.Events exposing (onAnimationFrameDelta)
+import Browser.Events exposing (onAnimationFrameDelta, onKeyDown, onKeyUp)
 import Canvas exposing (rect, shapes)
 import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Text exposing (TextAlign(..), align, font)
@@ -12,6 +12,7 @@ import Color
 import Html exposing (Html, button, div, img, text)
 import Html.Attributes exposing (class, src, style)
 import Html.Events exposing (onClick)
+import Json.Decode as Decode
 import Random
 import Time
 
@@ -26,6 +27,10 @@ type alias Model =
     , encounter : Encounter
     , battleState : BattleState
     , queuedActions : List BattleAction
+    , leftPressed : Bool
+    , rightPressed : Bool
+    , upPressed : Bool
+    , downPressed : Bool
     }
 
 
@@ -53,7 +58,8 @@ type BattleAction
 
 
 type alias Sprites =
-    { sabin : Canvas.Texture.Texture
+    { cursor : Canvas.Texture.Texture
+    , sabin : Canvas.Texture.Texture
     , rhobite : Canvas.Texture.Texture
     }
 
@@ -166,6 +172,10 @@ initialModel seed =
     , encounter = basicEncounter
     , battleState = Intro
     , queuedActions = []
+    , leftPressed = False
+    , rightPressed = False
+    , upPressed = False
+    , downPressed = False
     }
 
 
@@ -180,10 +190,82 @@ type ATBGauge
     | ATBGaugeReady
 
 
+type SelectionCursor
+    = Hidden
+    | Shown { x : Int, y : Int, context : CursorContextItem }
+
+
+type CursorContextItem
+    = MenuItem String
+    | SpriteTarget SpriteCharacter
+    | MonsterTarget SpriteMonster
+
+
+type Direction
+    = LeftPressed
+    | RightPressed
+    | LeftReleased
+    | RightReleased
+    | UpPressed
+    | UpReleased
+    | DownPressed
+    | DownReleased
+    | Other
+
+
+keyDecoderPressed : Decode.Decoder Msg
+keyDecoderPressed =
+    Decode.map toDirectionPressed (Decode.field "key" Decode.string)
+
+
+toDirectionPressed : String -> Msg
+toDirectionPressed string =
+    case string of
+        "ArrowLeft" ->
+            MoveCursor LeftPressed
+
+        "ArrowRight" ->
+            MoveCursor RightPressed
+
+        "ArrowUp" ->
+            MoveCursor UpPressed
+
+        "ArrowDown" ->
+            MoveCursor DownPressed
+
+        _ ->
+            MoveCursor Other
+
+
+toDirectionReleased : String -> Msg
+toDirectionReleased string =
+    case string of
+        "ArrowLeft" ->
+            MoveCursor LeftReleased
+
+        "ArrowRight" ->
+            MoveCursor RightReleased
+
+        "ArrowUp" ->
+            MoveCursor UpReleased
+
+        "ArrowDown" ->
+            MoveCursor DownReleased
+
+        _ ->
+            MoveCursor Other
+
+
+keyDecoderReleased : Decode.Decoder Msg
+keyDecoderReleased =
+    Decode.map toDirectionReleased (Decode.field "key" Decode.string)
+
+
 type Msg
     = TogglePause
     | Frame Float
     | TextureLoaded (Maybe Canvas.Texture.Texture)
+    | MoveCursor Direction
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -251,7 +333,15 @@ update msg model =
             ( { model
                 | gameSetupStatus =
                     SetupComplete
-                        { sabin =
+                        { cursor =
+                            Canvas.Texture.sprite
+                                { x = 173
+                                , y = 452
+                                , width = 32
+                                , height = 32
+                                }
+                                texture
+                        , sabin =
                             Canvas.Texture.sprite
                                 { x = 20
                                 , y = 62
@@ -272,6 +362,35 @@ update msg model =
               }
             , Cmd.none
             )
+
+        MoveCursor direction ->
+            case direction of
+                LeftPressed ->
+                    ( { model | leftPressed = True }, Cmd.none )
+
+                RightPressed ->
+                    ( { model | rightPressed = True }, Cmd.none )
+
+                LeftReleased ->
+                    ( { model | leftPressed = False }, Cmd.none )
+
+                RightReleased ->
+                    ( { model | rightPressed = False }, Cmd.none )
+
+                UpPressed ->
+                    ( { model | upPressed = True }, Cmd.none )
+
+                UpReleased ->
+                    ( { model | upPressed = False }, Cmd.none )
+
+                DownPressed ->
+                    ( { model | downPressed = True }, Cmd.none )
+
+                DownReleased ->
+                    ( { model | downPressed = False }, Cmd.none )
+
+                Other ->
+                    ( model, Cmd.none )
 
 
 
@@ -450,15 +569,15 @@ drawMenu model battleTimer sprites encounter =
             [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
             , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
             , Canvas.text
-                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Center, fill Color.white ]
+                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
                 ( 50, 220 )
                 "Attack"
             , Canvas.text
-                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Center, fill Color.white ]
+                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
                 ( 50, 240 )
                 "Magic"
             , Canvas.text
-                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Center, fill Color.white ]
+                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Left, fill Color.white ]
                 ( 50, 260 )
                 "Items"
             ]
@@ -477,7 +596,31 @@ drawDebug model =
         ("Battle State: "
             ++ battleStateToString model.battleState
         )
+    , Canvas.text
+        [ font { size = 14, family = "sans-serif" }, align Left, fill Color.black ]
+        ( 200, 30 )
+        ("Cursor Direction: "
+            ++ getCursorDirectionToString model
+        )
     ]
+
+
+getCursorDirectionToString : Model -> String
+getCursorDirectionToString { leftPressed, rightPressed, upPressed, downPressed } =
+    if leftPressed == True then
+        "Left"
+
+    else if rightPressed == True then
+        "Right"
+
+    else if upPressed == True then
+        "Up"
+
+    else if downPressed == True then
+        "Down"
+
+    else
+        "None"
 
 
 battleStateToString : BattleState -> String
@@ -511,7 +654,11 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     if model.paused == False then
         -- animator |> Animator.toSubscription Tick model
-        Sub.batch [ onAnimationFrameDelta Frame ]
+        Sub.batch
+            [ onAnimationFrameDelta Frame
+            , onKeyDown keyDecoderPressed
+            , onKeyUp keyDecoderReleased
+            ]
 
     else
         Sub.none
