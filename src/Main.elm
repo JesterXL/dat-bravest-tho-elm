@@ -22,18 +22,16 @@ type alias Model =
     , paused : Bool
     , time : Int
     , gameSetupStatus : GameSetupStatus
+    , battleTimer : BattleTimer
+    , encounter : Encounter
+    , battleState : BattleState
+    , queuedActions : List BattleAction
     }
 
 
 type GameSetupStatus
     = SettingUp
-    | SetupComplete
-        { battleTimer : BattleTimer
-        , sprites : Sprites
-        , encounter : Encounter
-        , battleState : BattleState
-        , queuedActions : List BattleAction
-        }
+    | SetupComplete Sprites
     | SetupFailed
 
 
@@ -164,6 +162,10 @@ initialModel seed =
     , paused = False
     , time = 0
     , gameSetupStatus = SettingUp
+    , battleTimer = { millisecondsPassed = 0, counter = 0 }
+    , encounter = basicEncounter
+    , battleState = Intro
+    , queuedActions = []
     }
 
 
@@ -198,18 +200,18 @@ update msg model =
                 SetupFailed ->
                     ( model, Cmd.none )
 
-                SetupComplete { battleTimer, sprites, encounter } ->
+                SetupComplete sprites ->
                     let
                         timePassedInt =
                             round timePassed
 
                         currentBattleTimer =
-                            battleTimer
+                            model.battleTimer
 
                         updatedBattleTimerMilliseconds =
                             { currentBattleTimer
                                 | millisecondsPassed =
-                                    battleTimer.millisecondsPassed + timePassedInt
+                                    model.battleTimer.millisecondsPassed + timePassedInt
                             }
 
                         updatedBattleTimerTimer =
@@ -223,25 +225,24 @@ update msg model =
                                 |> List.foldl
                                     (\_ encounterAccum ->
                                         { encounterAccum
-                                            | characters = updateATBGauges encounter.characters
+                                            | characters = updateATBGauges model.encounter.characters
                                         }
                                     )
-                                    encounter
+                                    model.encounter
 
                         updatedModel =
                             { model
                                 | time = model.time + timePassedInt
-                                , gameSetupStatus =
-                                    SetupComplete
-                                        { battleTimer = updatedBattleTimerTimer
-                                        , encounter = updatedEncounter
-                                        , sprites = sprites
-                                        , battleState = Intro
-                                        , queuedActions = []
-                                        }
+                                , gameSetupStatus = SetupComplete sprites
+                                , battleTimer = updatedBattleTimerTimer
+                                , encounter = updatedEncounter
                             }
                     in
-                    ( updatedModel, Cmd.none )
+                    if charactersATBIsReady updatedEncounter then
+                        ( { updatedModel | battleState = CharacterOrMonsterReady }, Cmd.none )
+
+                    else
+                        ( updatedModel, Cmd.none )
 
         TextureLoaded Nothing ->
             ( { model | gameSetupStatus = SetupFailed }, Cmd.none )
@@ -250,29 +251,24 @@ update msg model =
             ( { model
                 | gameSetupStatus =
                     SetupComplete
-                        { battleTimer = { millisecondsPassed = 0, counter = 0 }
-                        , sprites =
-                            { sabin =
-                                Canvas.Texture.sprite
-                                    { x = 20
-                                    , y = 62
-                                    , width = 16
-                                    , height = 24
-                                    }
-                                    texture
-                            , rhobite =
-                                Canvas.Texture.sprite
-                                    { x = 140
-                                    , y = 200
-                                    , width = 32
-                                    , height = 32
-                                    }
-                                    texture
-                            }
-                        , encounter = basicEncounter
-                        , battleState = Intro
-                        , queuedActions = []
+                        { sabin =
+                            Canvas.Texture.sprite
+                                { x = 20
+                                , y = 62
+                                , width = 16
+                                , height = 24
+                                }
+                                texture
+                        , rhobite =
+                            Canvas.Texture.sprite
+                                { x = 140
+                                , y = 200
+                                , width = 32
+                                , height = 32
+                                }
+                                texture
                         }
+                , battleTimer = { millisecondsPassed = 0, counter = 0 }
               }
             , Cmd.none
             )
@@ -351,7 +347,7 @@ view model =
                     "Setup failed."
                 ]
 
-        SetupComplete { battleTimer, sprites, encounter } ->
+        SetupComplete sprites ->
             Canvas.toHtmlWith
                 { width = gameWidth
                 , height = gameHeight
@@ -368,7 +364,7 @@ view model =
                             (\index spriteCharacter ->
                                 drawBar spriteCharacter.atbGauge index
                             )
-                            encounter.characters
+                            model.encounter.characters
                             |> List.concatMap
                                 (\bar -> bar)
                        )
@@ -376,11 +372,12 @@ view model =
                             (\index spriteMonster ->
                                 drawEnemy sprites spriteMonster index
                             )
-                            encounter.enemies
+                            model.encounter.enemies
                             |> List.concatMap
                                 (\monster -> monster)
                        )
-                    ++ drawMenu model battleTimer sprites encounter
+                    ++ drawMenu model model.battleTimer sprites model.encounter
+                    ++ drawDebug model
                 )
 
 
@@ -448,41 +445,61 @@ pauseButton paused =
 
 drawMenu : Model -> BattleTimer -> Sprites -> Encounter -> List Canvas.Renderable
 drawMenu model battleTimer sprites encounter =
-    if charactersATBIsReady encounter == False then
-        [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
-        , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
-        ]
+    case model.battleState of
+        CharacterOrMonsterReady ->
+            [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
+            , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
+            , Canvas.text
+                [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+                ( 50, 220 )
+                "Attack"
+            , Canvas.text
+                [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+                ( 50, 240 )
+                "Magic"
+            , Canvas.text
+                [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+                ( 50, 260 )
+                "Items"
+            ]
 
-    else
-        [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
-        , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
-        , Canvas.text
-            [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
-            ( 50, 220 )
-            "Attack"
-        , Canvas.text
-            [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
-            ( 50, 240 )
-            "Magic"
-        , Canvas.text
-            [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
-            ( 50, 260 )
-            "Items"
-        ]
+        _ ->
+            [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
+            , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
+            ]
 
 
-viewMenu : Model -> Html Msg
-viewMenu model =
-    div [ class "w-[300px] h-[320px] bg-blue-800 border-4 border-solid rounded-md" ]
-        [ button [ class "text-white" ]
-            [ Html.text "Attack" ]
-        , button
-            []
-            [ Html.text "Magic" ]
-        , button
-            []
-            [ Html.text "Items" ]
-        ]
+drawDebug : Model -> List Canvas.Renderable
+drawDebug model =
+    [ Canvas.text
+        [ font { size = 14, family = "sans-serif" }, align Left, fill Color.black ]
+        ( 200, 15 )
+        ("Battle State: "
+            ++ battleStateToString model.battleState
+        )
+    ]
+
+
+battleStateToString : BattleState -> String
+battleStateToString battleState =
+    case battleState of
+        Intro ->
+            "Intro"
+
+        Charging ->
+            "Charging"
+
+        CharacterOrMonsterReady ->
+            "CharacterOrMonsterReady"
+
+        CharacterMagicOrAbilityOrItem ->
+            "CharacterMagicOrAbilityOrItem"
+
+        MonsterDying ->
+            "MonsterDying"
+
+        AllCharactersDied ->
+            "AllCharactersDied"
 
 
 init : () -> ( Model, Cmd Msg )
