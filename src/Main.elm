@@ -226,6 +226,8 @@ type Direction
     | UpReleased
     | DownPressed
     | DownReleased
+    | EnterPressed
+    | EnterReleased
     | Other
 
 
@@ -236,6 +238,10 @@ keyDecoderPressed =
 
 toDirectionPressed : String -> Msg
 toDirectionPressed string =
+    let
+        _ =
+            Debug.log "key pressed" string
+    in
     case string of
         "ArrowLeft" ->
             MoveCursor LeftPressed
@@ -248,6 +254,9 @@ toDirectionPressed string =
 
         "ArrowDown" ->
             MoveCursor DownPressed
+
+        "Enter" ->
+            MoveCursor EnterPressed
 
         _ ->
             MoveCursor Other
@@ -267,6 +276,9 @@ toDirectionReleased string =
 
         "ArrowDown" ->
             MoveCursor DownReleased
+
+        "Enter" ->
+            MoveCursor EnterReleased
 
         _ ->
             MoveCursor Other
@@ -435,6 +447,12 @@ update msg model =
 
                 DownReleased ->
                     ( selectNextCursorTarget direction { model | downPressed = False }, Cmd.none )
+
+                EnterPressed ->
+                    ( model, Cmd.none )
+
+                EnterReleased ->
+                    ( model, Cmd.none )
 
                 Other ->
                     ( model, Cmd.none )
