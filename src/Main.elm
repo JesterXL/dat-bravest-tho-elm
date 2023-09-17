@@ -1,10 +1,11 @@
 module Main exposing (main)
 
 import Animator exposing (color)
+import Array exposing (Array)
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta, onKeyDown, onKeyUp)
-import Canvas exposing (rect, shapes)
+import Canvas exposing (Point, rect, shapes)
 import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Text exposing (TextAlign(..), align, font)
 import Canvas.Texture exposing (sprite)
@@ -31,8 +32,16 @@ type alias Model =
     , rightPressed : Bool
     , upPressed : Bool
     , downPressed : Bool
-    , selectionCursor : SelectionCursor
+
+    -- , selectionCursor : SelectionCursor
+    , selectionTargets : Array Point
+    , selectionIndex : Int
+    , selectionTarget : Maybe Point
     }
+
+
+type alias Point =
+    { x : Float, y : Float }
 
 
 type GameSetupStatus
@@ -177,7 +186,11 @@ initialModel seed =
     , rightPressed = False
     , upPressed = False
     , downPressed = False
-    , selectionCursor = Hidden
+
+    -- , selectionCursor = Hidden
+    , selectionTargets = Array.fromList [ { x = 50, y = 220 }, { x = 50, y = 240 }, { x = 50, y = 260 } ]
+    , selectionIndex = 0
+    , selectionTarget = Nothing
     }
 
 
@@ -192,9 +205,10 @@ type ATBGauge
     | ATBGaugeReady
 
 
-type SelectionCursor
-    = Hidden
-    | Shown { x : Int, y : Int, context : CursorContextItem }
+
+-- type SelectionCursor
+--     = Hidden
+--     | Shown { x : Int, y : Int, context : CursorContextItem }
 
 
 type CursorContextItem
@@ -261,6 +275,37 @@ toDirectionReleased string =
 keyDecoderReleased : Decode.Decoder Msg
 keyDecoderReleased =
     Decode.map toDirectionReleased (Decode.field "key" Decode.string)
+
+
+selectNextCursorTarget : Direction -> Model -> Model
+selectNextCursorTarget direction model =
+    case direction of
+        LeftPressed ->
+            let
+                ( updatedTarget, updatedIndex ) =
+                    if model.selectionIndex > 0 then
+                        ( Array.get (model.selectionIndex - 1) model.selectionTargets, model.selectionIndex - 1 )
+
+                    else
+                        ( Array.get (Array.length model.selectionTargets - 1) model.selectionTargets, Array.length model.selectionTargets - 1 )
+            in
+            { model | selectionTarget = updatedTarget, selectionIndex = updatedIndex }
+
+        RightPressed ->
+            let
+                ( updatedTarget, updatedIndex ) =
+                    if model.selectionIndex > Array.length model.selectionTargets - 1 then
+                        ( Array.get 0 model.selectionTargets, 0 )
+
+                    else
+                        ( Array.get (model.selectionIndex + 1) model.selectionTargets, model.selectionIndex + 1 )
+            in
+            { model | selectionTarget = updatedTarget, selectionIndex = updatedIndex }
+
+        -- DownPressed ->
+        -- UpPressed ->
+        _ ->
+            model
 
 
 type Msg
@@ -368,28 +413,28 @@ update msg model =
         MoveCursor direction ->
             case direction of
                 LeftPressed ->
-                    ( { model | leftPressed = True, selectionCursor = Shown { x = 30, y = 220, context = MenuItem "Cow" } }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | leftPressed = True }, Cmd.none )
 
                 RightPressed ->
-                    ( { model | rightPressed = True }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | rightPressed = True }, Cmd.none )
 
                 LeftReleased ->
-                    ( { model | leftPressed = False }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | leftPressed = False }, Cmd.none )
 
                 RightReleased ->
-                    ( { model | rightPressed = False }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | rightPressed = False }, Cmd.none )
 
                 UpPressed ->
-                    ( { model | upPressed = True }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | upPressed = True }, Cmd.none )
 
                 UpReleased ->
-                    ( { model | upPressed = False }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | upPressed = False }, Cmd.none )
 
                 DownPressed ->
-                    ( { model | downPressed = True }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | downPressed = True }, Cmd.none )
 
                 DownReleased ->
-                    ( { model | downPressed = False }, Cmd.none )
+                    ( selectNextCursorTarget direction { model | downPressed = False }, Cmd.none )
 
                 Other ->
                     ( model, Cmd.none )
@@ -593,14 +638,18 @@ drawMenu model battleTimer sprites encounter =
 
 drawCursor : Model -> Sprites -> List Canvas.Renderable
 drawCursor model sprites =
-    case model.selectionCursor of
-        Hidden ->
+    -- case model.selectionCursor of
+    --     Hidden ->
+    --         []
+    --     Shown stuff ->
+    case model.selectionTarget of
+        Nothing ->
             []
 
-        Shown { x, y, context } ->
+        Just { x, y } ->
             [ Canvas.texture
                 []
-                ( 10, 228 )
+                ( x - 32, y - 13 )
                 sprites.cursor
             ]
 
