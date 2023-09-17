@@ -4,7 +4,7 @@ import Animator exposing (color)
 import Array exposing (Array)
 import Battle exposing (Attack(..), AttackMissesDeathProtectedTargets(..), BattlePower(..), CharacterStats, Defense(..), Element(..), EquippedRelics, Evade(..), Formation(..), Gold(..), HitPoints(..), HitRate(..), HitResult(..), Item(..), Level(..), MBlock(..), MagicDefense(..), MagicPoints(..), MagicPower(..), Monster(..), MonsterStats, PlayableCharacter, Relic(..), Speed(..), SpellPower(..), Stamina(..), Vigor(..), XP(..), dirk, fireSpell, getDamage, getHit, getRandomNumberFromRange, hitResultToString, lockeStats, lockeTarget, playableLocke, playableSabin, playableTerra, terraAttacker, terraStats)
 import Browser
-import Browser.Events exposing (onAnimationFrameDelta, onKeyDown, onKeyUp)
+import Browser.Events exposing (Visibility(..), onAnimationFrameDelta, onKeyDown, onKeyUp, onVisibilityChange)
 import Canvas exposing (Point, rect, shapes)
 import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Text exposing (TextAlign(..), align, font)
@@ -25,7 +25,9 @@ type alias Model =
     , time : Int
     , gameSetupStatus : GameSetupStatus
     , battleTimer : BattleTimer
-    , encounter : Encounter
+    , enemies : List SpriteMonster
+    , characters : List SpriteCharacter
+    , formation : Formation
     , battleState : BattleState
     , queuedActions : List BattleAction
     , leftPressed : Bool
@@ -74,16 +76,8 @@ type alias Sprites =
     }
 
 
-type alias Encounter =
-    { enemies : List SpriteMonster
-    , characters : List SpriteCharacter
-    , formation : Formation
-    , state : EncounterState
-    }
-
-
-charactersATBIsReady : Encounter -> Bool
-charactersATBIsReady encounter =
+charactersATBIsReady : List SpriteCharacter -> Bool
+charactersATBIsReady characters =
     let
         readyCharacters =
             List.filter
@@ -95,15 +89,9 @@ charactersATBIsReady encounter =
                         ATBGaugeCharging _ ->
                             False
                 )
-                encounter.characters
+                characters
     in
     List.isEmpty readyCharacters == False
-
-
-type EncounterState
-    = ATBsCharging
-    | BattleAnimation
-    | CharacterSelecting
 
 
 type alias SpriteMonster =
@@ -119,15 +107,6 @@ type alias SpriteCharacter =
     , width : Int
     , height : Int
     , atbGauge : ATBGauge
-    }
-
-
-basicEncounter : Encounter
-basicEncounter =
-    { enemies = [ rhobite, rhobite, rhobite ]
-    , characters = [ sabin ]
-    , formation = NormalFormation False
-    , state = ATBsCharging
     }
 
 
@@ -179,7 +158,9 @@ initialModel seed =
     , time = 0
     , gameSetupStatus = SettingUp
     , battleTimer = { millisecondsPassed = 0, counter = 0 }
-    , encounter = basicEncounter
+    , enemies = [ rhobite, rhobite, rhobite ]
+    , characters = [ sabin ]
+    , formation = NormalFormation False
     , battleState = Intro
     , queuedActions = []
     , leftPressed = False
@@ -325,6 +306,7 @@ type Msg
     | Frame Float
     | TextureLoaded (Maybe Canvas.Texture.Texture)
     | MoveCursor Direction
+    | VisibilityChange Visibility
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -361,25 +343,27 @@ update msg model =
                                 , millisecondsPassed = remainderBy 30 updatedBattleTimerMilliseconds.millisecondsPassed
                             }
 
-                        updatedEncounter =
-                            List.repeat updatedBattleTimerTimer.counter 0
-                                |> List.foldl
-                                    (\_ encounterAccum ->
-                                        { encounterAccum
-                                            | characters = updateATBGauges model.encounter.characters
-                                        }
-                                    )
-                                    model.encounter
+                        -- updatedCharacters =
+                        --     List.repeat updatedBattleTimerTimer.counter 0
+                        --         |> List.map
+                        --             (\character  ->
+                        --                 { encounterAccum
+                        --                     | characters = updateATBGauges model.encounter.characters
+                        --                 }
+                        --             )
+                        --             model.characters
+                        updatedCharacters =
+                            updateATBGauges model.characters
 
                         updatedModel =
                             { model
                                 | time = model.time + timePassedInt
                                 , gameSetupStatus = SetupComplete sprites
                                 , battleTimer = updatedBattleTimerTimer
-                                , encounter = updatedEncounter
+                                , characters = updatedCharacters
                             }
                     in
-                    if charactersATBIsReady updatedEncounter then
+                    if charactersATBIsReady updatedCharacters then
                         ( { updatedModel | battleState = CharacterOrMonsterReady }, Cmd.none )
 
                     else
@@ -456,6 +440,14 @@ update msg model =
 
                 Other ->
                     ( model, Cmd.none )
+
+        VisibilityChange vis ->
+            case vis of
+                Hidden ->
+                    ( { model | paused = True }, Cmd.none )
+
+                Visible ->
+                    ( { model | paused = False }, Cmd.none )
 
 
 
@@ -548,7 +540,7 @@ view model =
                             (\index spriteCharacter ->
                                 drawBar spriteCharacter.atbGauge index
                             )
-                            model.encounter.characters
+                            model.characters
                             |> List.concatMap
                                 (\bar -> bar)
                        )
@@ -556,11 +548,11 @@ view model =
                             (\index spriteMonster ->
                                 drawEnemy sprites spriteMonster index
                             )
-                            model.encounter.enemies
+                            model.enemies
                             |> List.concatMap
                                 (\monster -> monster)
                        )
-                    ++ drawMenu model model.battleTimer sprites model.encounter
+                    ++ drawMenu model model.battleTimer sprites
                     ++ drawCursor model sprites
                     ++ drawDebug model
                 )
@@ -628,8 +620,8 @@ pauseButton paused =
         button [ onClick TogglePause ] [ Html.text "Pause" ]
 
 
-drawMenu : Model -> BattleTimer -> Sprites -> Encounter -> List Canvas.Renderable
-drawMenu model battleTimer sprites encounter =
+drawMenu : Model -> BattleTimer -> Sprites -> List Canvas.Renderable
+drawMenu model battleTimer sprites =
     case model.battleState of
         CharacterOrMonsterReady ->
             [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
@@ -739,13 +731,14 @@ subscriptions model =
     if model.paused == False then
         -- animator |> Animator.toSubscription Tick model
         Sub.batch
-            [ onAnimationFrameDelta Frame
+            [ onVisibilityChange VisibilityChange
+            , onAnimationFrameDelta Frame
             , onKeyDown keyDecoderPressed
             , onKeyUp keyDecoderReleased
             ]
 
     else
-        Sub.none
+        onVisibilityChange VisibilityChange
 
 
 main : Program () Model Msg
