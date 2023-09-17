@@ -31,6 +31,7 @@ type alias Model =
     , rightPressed : Bool
     , upPressed : Bool
     , downPressed : Bool
+    , selectionCursor : SelectionCursor
     }
 
 
@@ -176,6 +177,7 @@ initialModel seed =
     , rightPressed = False
     , upPressed = False
     , downPressed = False
+    , selectionCursor = Hidden
     }
 
 
@@ -335,8 +337,8 @@ update msg model =
                     SetupComplete
                         { cursor =
                             Canvas.Texture.sprite
-                                { x = 173
-                                , y = 452
+                                { x = 68
+                                , y = 217
                                 , width = 32
                                 , height = 32
                                 }
@@ -366,7 +368,7 @@ update msg model =
         MoveCursor direction ->
             case direction of
                 LeftPressed ->
-                    ( { model | leftPressed = True }, Cmd.none )
+                    ( { model | leftPressed = True, selectionCursor = Shown { x = 30, y = 220, context = MenuItem "Cow" } }, Cmd.none )
 
                 RightPressed ->
                     ( { model | rightPressed = True }, Cmd.none )
@@ -496,6 +498,7 @@ view model =
                                 (\monster -> monster)
                        )
                     ++ drawMenu model model.battleTimer sprites model.encounter
+                    ++ drawCursor model sprites
                     ++ drawDebug model
                 )
 
@@ -585,6 +588,20 @@ drawMenu model battleTimer sprites encounter =
         _ ->
             [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
             , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
+            ]
+
+
+drawCursor : Model -> Sprites -> List Canvas.Renderable
+drawCursor model sprites =
+    case model.selectionCursor of
+        Hidden ->
+            []
+
+        Shown { x, y, context } ->
+            [ Canvas.texture
+                []
+                ( 10, 228 )
+                sprites.cursor
             ]
 
 
