@@ -450,15 +450,15 @@ drawMenu model battleTimer sprites encounter =
             [ shapes [ fill Color.blue ] [ rect ( 20, 200 ) 300 100 ]
             , shapes [ stroke Color.white ] [ rect ( 20, 200 ) 300 100 ]
             , Canvas.text
-                [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Center, fill Color.white ]
                 ( 50, 220 )
                 "Attack"
             , Canvas.text
-                [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Center, fill Color.white ]
                 ( 50, 240 )
                 "Magic"
             , Canvas.text
-                [ font { size = 14, family = "sans-serif" }, align Center, fill Color.white ]
+                [ font { size = 26, family = "Final Fantasy VI SNESa" }, align Center, fill Color.white ]
                 ( 50, 260 )
                 "Items"
             ]
